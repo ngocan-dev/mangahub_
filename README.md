@@ -1,10 +1,3 @@
-Perfect ✅ — let’s make a **professional `README.md`** for your GitHub repo that clearly explains your MangaHub project setup, flow, and tech stack (based on everything you’ve already built).
-
-Below is a **ready-to-use README** written in Markdown, formatted for GitHub — clean, detailed, and following best practices 👇
-
----
-
-```markdown
 # 📚 MangaHub – Network Programming Project (Go + Next.js)
 
 > A full-stack **Manga Management & Reading System** built for the **Net-Centric Programming** course.  
