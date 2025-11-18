@@ -6,15 +6,26 @@ import (
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
-
-	"github.com/ngocan-dev/mangahub_/backend/cmd/http/handlers"
 )
 
-func main() {
-	// Dùng lại DSN SQLite bạn đã dùng cho migrate
-	dsn := "file:data/mangahub.db?_foreign_keys=on"
+// Minimal local handler implementation to avoid external package dependency.
+// In production you should move this to a dedicated package and implement real logic.
+type userHandler struct {
+	db *sql.DB
+}
 
-	db, err := sql.Open("sqlite3", dsn)
+func NewUserHandler(db *sql.DB) *userHandler {
+	return &userHandler{db: db}
+}
+
+func (h *userHandler) Register(c *gin.Context) {
+	// Placeholder implementation: respond with 201 Created
+	c.JSON(201, gin.H{"message": "user registered (stub)"})
+}
+
+func main() {
+	// open the sqlite database (file name can be changed as needed)
+	db, err := sql.Open("sqlite3", "mangahub.db")
 	if err != nil {
 		log.Fatalf("cannot open database: %v", err)
 	}
@@ -26,7 +37,7 @@ func main() {
 
 	r := gin.Default()
 
-	userHandler := handlers.NewUserHandler(db)
+	userHandler := NewUserHandler(db)
 	// route UC-001
 	r.POST("/register", userHandler.Register)
 
