@@ -5,11 +5,10 @@ import (
 	"log"
 
 	"github.com/gin-gonic/gin"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite" // Dùng driver giống migration
 )
 
-// Minimal local handler implementation to avoid external package dependency.
-// In production you should move this to a dedicated package and implement real logic.
+// user handler tối giản
 type userHandler struct {
 	db *sql.DB
 }
@@ -19,13 +18,14 @@ func NewUserHandler(db *sql.DB) *userHandler {
 }
 
 func (h *userHandler) Register(c *gin.Context) {
-	// Placeholder implementation: respond with 201 Created
 	c.JSON(201, gin.H{"message": "user registered (stub)"})
 }
 
 func main() {
-	// open the sqlite database (file name can be changed as needed)
-	db, err := sql.Open("sqlite3", "mangahub.db")
+	// Mở database từ đúng thư mục Migration
+	dsn := "file:data/mangahub.db?_foreign_keys=on"
+
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		log.Fatalf("cannot open database: %v", err)
 	}
@@ -38,7 +38,8 @@ func main() {
 	r := gin.Default()
 
 	userHandler := NewUserHandler(db)
-	// route UC-001
+
+	// Route UC-001: Register
 	r.POST("/register", userHandler.Register)
 
 	log.Println("HTTP API listening on :8080")
