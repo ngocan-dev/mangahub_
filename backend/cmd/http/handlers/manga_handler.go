@@ -47,7 +47,7 @@ func buildMangaHandler(conn *sql.DB, mangaService *manga.Service) *MangaHandler 
 
 	historyService := history.NewService(historyRepo, chapterService, favoriteRepo, mangaService)
 	favoriteService := favorite.NewService(favoriteRepo, mangaService, historyService)
-	commentService := comment.NewService(commentRepo, mangaService)
+	commentService := comment.NewService(commentRepo, mangaService, historyService)
 
 	return &MangaHandler{
 		mangaService:    mangaService,
@@ -495,6 +495,7 @@ func (h *MangaHandler) GetDetails(c *gin.Context) {
 	// Success: Return manga details
 	c.JSON(http.StatusOK, detail)
 }
+
 func (h *MangaHandler) AddToLibrary(c *gin.Context) {
 			"message": "authentication required",
 		})

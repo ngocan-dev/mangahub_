@@ -135,8 +135,9 @@ func (p *WriteProcessor) processCreateReview(ctx context.Context, op WriteOperat
 		return fmt.Errorf("invalid content length")
 	}
 
-	// Create repository and create review
+	// Create repositories used during review creation
 	commentRepo := comment.NewRepository(p.db)
+	historyRepo := history.NewRepository(p.db)
 
 	// Check if review already exists
 	existing, err := commentRepo.GetReviewByUserAndManga(ctx, op.UserID, op.MangaID)
@@ -148,7 +149,7 @@ func (p *WriteProcessor) processCreateReview(ctx context.Context, op WriteOperat
 	}
 
 	// Check if manga is completed
-	completed, err := commentRepo.CheckMangaInCompletedLibrary(ctx, op.UserID, op.MangaID)
+	completed, err := historyRepo.IsMangaCompleted(ctx, op.UserID, op.MangaID)
 	if err != nil {
 		return err
 	}

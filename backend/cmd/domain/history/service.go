@@ -65,6 +65,15 @@ func (s *Service) GetProgress(ctx context.Context, userID, mangaID int64) (*User
 	return progress, nil
 }
 
+// HasCompletedManga reports whether the user finished the manga in their library
+func (s *Service) HasCompletedManga(ctx context.Context, userID, mangaID int64) (bool, error) {
+	completed, err := s.repo.IsMangaCompleted(ctx, userID, mangaID)
+	if err != nil {
+		return false, fmt.Errorf("%w: %v", ErrDatabaseError, err)
+	}
+	return completed, nil
+}
+
 // UpdateProgress updates reading progress
 func (s *Service) UpdateProgress(ctx context.Context, userID, mangaID int64, req UpdateProgressRequest) (*UpdateProgressResponse, error) {
 	if req.CurrentChapter < 1 {

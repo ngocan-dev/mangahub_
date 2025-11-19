@@ -47,11 +47,25 @@ func (r *Repository) GetUserProgress(ctx context.Context, userID, mangaID int64)
 // UpdateProgress updates progress table
 func (r *Repository) UpdateProgress(ctx context.Context, userID, mangaID int64, chapter int, chapterID *int64) error {
 	_, err := r.db.ExecContext(ctx, `
-        UPDATE Reading_Progress
-        SET Current_Chapter = ?, Current_Chapter_Id = ?, Last_Read_At = CURRENT_TIMESTAMP
-        WHERE User_Id = ? AND Novel_Id = ?
-    `, chapter, chapterID, userID, mangaID)
+UPDATE Reading_Progress
+SET Current_Chapter = ?, Current_Chapter_Id = ?, Last_Read_At = CURRENT_TIMESTAMP
+WHERE User_Id = ? AND Novel_Id = ?
+`, chapter, chapterID, userID, mangaID)
 	return err
+}
+
+// IsMangaCompleted checks whether the user completed the manga in their library
+func (r *Repository) IsMangaCompleted(ctx context.Context, userID, mangaID int64) (bool, error) {
+	var count int
+	err := r.db.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM User_Library
+WHERE User_Id = ? AND Novel_Id = ? AND Status = 'completed'
+`, userID, mangaID).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // GetFriends retrieves accepted friend IDs

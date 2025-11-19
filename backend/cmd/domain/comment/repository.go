@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 )
 
 // Repository handles database operations for reviews
@@ -87,6 +88,38 @@ func (r *Repository) GetReviewByUserAndManga(ctx context.Context, userID, mangaI
 		review.UpdatedAt = updatedAt.Time
 	}
 
+	return &review, nil
+}
+
+// GetReviewByID fetches a review by its identifier
+func (r *Repository) GetReviewByID(ctx context.Context, reviewID int64) (*Review, error) {
+	query := `
+SELECT r.Review_Id, r.User_Id, u.Username, r.Novel_Id, r.Rating, r.Content, r.Created_At, r.Updated_At
+FROM Reviews r
+JOIN Users u ON r.User_Id = u.UserId
+WHERE r.Review_Id = ?
+`
+	var review Review
+	var updatedAt sql.NullTime
+	err := r.db.QueryRowContext(ctx, query, reviewID).Scan(
+		&review.ReviewID,
+		&review.UserID,
+		&review.Username,
+		&review.MangaID,
+		&review.Rating,
+		&review.Content,
+		&review.CreatedAt,
+		&updatedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if updatedAt.Valid {
+		review.UpdatedAt = updatedAt.Time
+	}
 	return &review, nil
 }
 
@@ -177,20 +210,6 @@ func (r *Repository) GetReviews(ctx context.Context, mangaID int64, page, limit 
 	return reviews, total, nil
 }
 
-// CheckMangaInCompletedLibrary ensures manga is completed by user
-func (r *Repository) CheckMangaInCompletedLibrary(ctx context.Context, userID, mangaID int64) (bool, error) {
-	var exists int
-	err := r.db.QueryRowContext(ctx, `
-        SELECT COUNT(*)
-        FROM User_Library
-        WHERE User_Id = ? AND Novel_Id = ? AND Status = 'completed'
-    `, userID, mangaID).Scan(&exists)
-	if err != nil {
-		return false, err
-	}
-	return exists > 0, nil
-}
-
 // GetReviewStats aggregates review information
 func (r *Repository) GetReviewStats(ctx context.Context, mangaID int64) (*ReviewStats, error) {
 	query := `
@@ -210,4 +229,52 @@ func (r *Repository) GetReviewStats(ctx context.Context, mangaID int64) (*Review
 	}
 	stats.AverageRating = float64(int(stats.AverageRating*100+0.5)) / 100
 	return &stats, nil
+}
+
+// UpdateReview applies provided field changes on a review
+func (r *Repository) UpdateReview(ctx context.Context, reviewID, userID int64, rating *int, content *string) error {
+	setClauses := make([]string, 0, 2)
+	args := make([]interface{}, 0, 4)
+	if rating != nil {
+		setClauses = append(setClauses, "Rating = ?")
+		args = append(args, *rating)
+	}
+	if content != nil {
+		setClauses = append(setClauses, "Content = ?")
+		args = append(args, *content)
+	}
+	if len(setClauses) == 0 {
+		return nil
+	}
+	setClauses = append(setClauses, "Updated_At = CURRENT_TIMESTAMP")
+	query := fmt.Sprintf(`UPDATE Reviews SET %s WHERE Review_Id = ? AND User_Id = ?`, strings.Join(setClauses, ", "))
+	args = append(args, reviewID, userID)
+	result, err := r.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+// DeleteReview removes a review owned by the user
+func (r *Repository) DeleteReview(ctx context.Context, reviewID, userID int64) error {
+	result, err := r.db.ExecContext(ctx, `DELETE FROM Reviews WHERE Review_Id = ? AND User_Id = ?`, reviewID, userID)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
