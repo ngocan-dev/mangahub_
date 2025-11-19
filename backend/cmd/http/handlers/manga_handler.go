@@ -1,26 +1,28 @@
 package handlers
 
 import (
-	"database/sql"
-	"errors"
-	"fmt"
-	"log"
-	"net/http"
-	"strconv"
+        "database/sql"
+        "errors"
+        "fmt"
+        "log"
+        "net/http"
+        "strconv"
 
-	"github.com/gin-gonic/gin"
+        "github.com/gin-gonic/gin"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/auth"
-"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/comment"
-"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/favorite"
-"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/history"
-"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/manga"
-"github.com/ngocan-dev/mangahub/manga-backend/cmd/security"
-"github.com/ngocan-dev/mangahub/manga-backend/internal/chapter"
+        "github.com/ngocan-dev/mangahub/manga-backend/cmd/auth"
+        "github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/comment"
+        "github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/favorite"
+        "github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/history"
+        "github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/library"
+        "github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/manga"
+        "github.com/ngocan-dev/mangahub/manga-backend/cmd/security"
+        "github.com/ngocan-dev/mangahub/manga-backend/internal/chapter"
 )
 
 type MangaHandler struct {
 	mangaService    *manga.Service
+	libraryService  *library.Service
 	favoriteService *favorite.Service
 	historyService  *history.Service
 	commentService  *comment.Service
@@ -41,16 +43,19 @@ func buildMangaHandler(conn *sql.DB, mangaService *manga.Service) *MangaHandler 
 	chapterService := chapter.NewService(chapterRepo)
 	mangaService.SetChapterService(chapterService)
 
+	libraryRepo := library.NewRepository(conn)
 	historyRepo := history.NewRepository(conn)
 	favoriteRepo := favorite.NewRepository(conn)
 	commentRepo := comment.NewRepository(conn)
 
-	historyService := history.NewService(historyRepo, chapterService, favoriteRepo, mangaService)
-	favoriteService := favorite.NewService(favoriteRepo, mangaService, historyService)
+	historyService := history.NewService(historyRepo, chapterService, libraryRepo, mangaService)
+	libraryService := library.NewService(libraryRepo, mangaService, historyService)
+	favoriteService := favorite.NewService(favoriteRepo, libraryService)
 	commentService := comment.NewService(commentRepo, mangaService, historyService)
 
 	return &MangaHandler{
 		mangaService:    mangaService,
+		libraryService:  libraryService,
 		favoriteService: favoriteService,
 		historyService:  historyService,
 		commentService:  commentService,
@@ -521,29 +526,29 @@ func (h *MangaHandler) AddToLibrary(c *gin.Context) {
 		return
 	}
 
-	// Bind request body
-	var req favorite.AddToLibraryRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "invalid request body. status is required",
-		})
-		return
-	}
+        // Bind request body
+        var req library.AddToLibraryRequest
+        if err := c.ShouldBindJSON(&req); err != nil {
+                c.JSON(http.StatusBadRequest, gin.H{
+                        "error": "invalid request body. status is required",
+                })
+                return
+        }
 
-	// Validate status input
-	// SQL injection attempts are blocked
-	if err := security.DetectSQLInjection(req.Status); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "invalid status format",
-		})
-		return
-	}
+        // Validate status input
+        // SQL injection attempts are blocked
+        if err := security.DetectSQLInjection(req.Status); err != nil {
+                c.JSON(http.StatusBadRequest, gin.H{
+                        "error": "invalid status format",
+                })
+                return
+        }
 
-	// Add to library
-	response, err := h.favoriteService.AddToLibrary(c.Request.Context(), userID, mangaID, req)
-	if err != nil {
-		// A1: Manga already in library - System offers to update status
-		if errors.Is(err, favorite.ErrMangaAlreadyInLibrary) {
+        // Add to library
+        response, err := h.libraryService.AddToLibrary(c.Request.Context(), userID, mangaID, req)
+        if err != nil {
+                // A1: Manga already in library - System offers to update status
+                if errors.Is(err, library.ErrMangaAlreadyInLibrary) {
 			c.JSON(http.StatusConflict, gin.H{
 				"error":   "manga already in library",
 				"message": "use update endpoint to change status",
@@ -551,24 +556,24 @@ func (h *MangaHandler) AddToLibrary(c *gin.Context) {
 			return
 		}
 
-		// Invalid status
-		if errors.Is(err, favorite.ErrInvalidStatus) {
+                // Invalid status
+                if errors.Is(err, library.ErrInvalidStatus) {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": "invalid status. valid values: plan_to_read, reading, completed, on_hold, dropped",
 			})
 			return
 		}
 
-		// Manga not found
-		if errors.Is(err, favorite.ErrMangaNotFound) {
+                // Manga not found
+                if errors.Is(err, library.ErrMangaNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{
 				"error": "manga not found",
 			})
 			return
 		}
 
-		// A2: Database error - System logs error and shows retry option
-		if errors.Is(err, favorite.ErrDatabaseError) {
+                // A2: Database error - System logs error and shows retry option
+                if errors.Is(err, library.ErrDatabaseError) {
 			log.Printf("Database error during add to library: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": "an error occurred while adding to library. please try again later",
