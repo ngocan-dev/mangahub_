@@ -11,6 +11,7 @@ type Repository struct {
 	db *sql.DB
 }
 
+// NewRepository creates repository
 func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
@@ -99,6 +100,11 @@ func (r *Repository) Search(ctx context.Context, req SearchRequest) ([]Manga, in
 	if limit > 100 {
 		limit = 100
 	}
+	page := req.Page
+	if page <= 0 {
+		page = 1
+	}
+	offset := (page - 1) * limit
 
 	page := req.Page
 	if page <= 0 {
@@ -133,7 +139,6 @@ func (r *Repository) Search(ctx context.Context, req SearchRequest) ([]Manga, in
 		); err != nil {
 			return nil, 0, err
 		}
-		results = append(results, m)
 	}
 
 	if err := rows.Err(); err != nil {

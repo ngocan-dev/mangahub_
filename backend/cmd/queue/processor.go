@@ -7,7 +7,10 @@ import (
 	"log"
 	"time"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/manga"
+	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/chapter"
+	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/comment"
+	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/favorite"
+	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/history"
 )
 
 // WriteProcessor processes queued write operations
@@ -47,10 +50,10 @@ func (p *WriteProcessor) processAddToLibrary(ctx context.Context, op WriteOperat
 	isFavorite, _ := op.Data["is_favorite"].(bool)
 
 	// Create repository and add to library
-	repo := manga.NewRepository(p.db)
+	favRepo := favorite.NewRepository(p.db)
 
 	// Check if already exists
-	exists, err := repo.CheckLibraryExists(ctx, op.UserID, op.MangaID)
+	exists, err := favRepo.CheckLibraryExists(ctx, op.UserID, op.MangaID)
 	if err != nil {
 		return err
 	}
@@ -62,7 +65,7 @@ func (p *WriteProcessor) processAddToLibrary(ctx context.Context, op WriteOperat
 		currentChapter = 1
 	}
 
-	return repo.AddToLibrary(ctx, op.UserID, op.MangaID, status, currentChapter, isFavorite)
+	return favRepo.AddToLibrary(ctx, op.UserID, op.MangaID, status, currentChapter, isFavorite)
 }
 
 // processUpdateProgress processes an update progress operation
@@ -82,10 +85,10 @@ func (p *WriteProcessor) processUpdateProgress(ctx context.Context, op WriteOper
 	}
 
 	// Create repository and update progress
-	repo := manga.NewRepository(p.db)
+	favRepo := favorite.NewRepository(p.db)
 
 	// Check if manga exists in library
-	exists, err := repo.CheckLibraryExists(ctx, op.UserID, op.MangaID)
+	exists, err := favRepo.CheckLibraryExists(ctx, op.UserID, op.MangaID)
 	if err != nil {
 		return err
 	}
@@ -94,7 +97,8 @@ func (p *WriteProcessor) processUpdateProgress(ctx context.Context, op WriteOper
 	}
 
 	// Get max chapter
-	maxChapter, err := repo.GetChapterCount(ctx, op.MangaID)
+	chapterService := chapter.NewService(chapter.NewRepository(p.db))
+	maxChapter, err := chapterService.GetMaxChapterNumber(ctx, op.MangaID)
 	if err != nil {
 		return err
 	}
@@ -106,7 +110,8 @@ func (p *WriteProcessor) processUpdateProgress(ctx context.Context, op WriteOper
 	var chapterID *int64
 	// Try to find chapter by number - if not found, chapterID remains nil which is acceptable
 
-	return repo.UpdateProgress(ctx, op.UserID, op.MangaID, currentChapter, chapterID)
+	historyRepo := history.NewRepository(p.db)
+	return historyRepo.UpdateProgress(ctx, op.UserID, op.MangaID, currentChapter, chapterID)
 }
 
 // processCreateReview processes a create review operation
@@ -131,10 +136,10 @@ func (p *WriteProcessor) processCreateReview(ctx context.Context, op WriteOperat
 	}
 
 	// Create repository and create review
-	repo := manga.NewRepository(p.db)
+	commentRepo := comment.NewRepository(p.db)
 
 	// Check if review already exists
-	existing, err := repo.GetReviewByUserAndManga(ctx, op.UserID, op.MangaID)
+	existing, err := commentRepo.GetReviewByUserAndManga(ctx, op.UserID, op.MangaID)
 	if err != nil {
 		return err
 	}
@@ -143,7 +148,7 @@ func (p *WriteProcessor) processCreateReview(ctx context.Context, op WriteOperat
 	}
 
 	// Check if manga is completed
-	completed, err := repo.CheckMangaInCompletedLibrary(ctx, op.UserID, op.MangaID)
+	completed, err := commentRepo.CheckMangaInCompletedLibrary(ctx, op.UserID, op.MangaID)
 	if err != nil {
 		return err
 	}
@@ -151,7 +156,7 @@ func (p *WriteProcessor) processCreateReview(ctx context.Context, op WriteOperat
 		return fmt.Errorf("manga must be completed to write review")
 	}
 
-	_, err = repo.CreateReview(ctx, op.UserID, op.MangaID, rating, content)
+	_, err = commentRepo.CreateReview(ctx, op.UserID, op.MangaID, rating, content)
 	return err
 }
 
