@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/auth"
+	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/chapter"
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/manga"
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/udp"
 )
@@ -118,7 +119,9 @@ func (h *NotificationHandler) NotifyChapterRelease(c *gin.Context) {
 	}
 
 	// Step 2: Get manga details
-	mangaService := manga.NewService(h.DB)
+	mangaService := GetMangaService(h.DB, nil)
+	chapterService := chapter.NewService(chapter.NewRepository(h.DB))
+	mangaService.SetChapterService(chapterService)
 	mangaDetail, err := mangaService.GetDetails(c.Request.Context(), req.NovelID, nil)
 	if err != nil {
 		if errors.Is(err, manga.ErrMangaNotFound) {
@@ -142,8 +145,7 @@ func (h *NotificationHandler) NotifyChapterRelease(c *gin.Context) {
 	chapterID := req.ChapterID
 	if chapterID == 0 {
 		// Try to find chapter ID from chapter number
-		mangaRepo := manga.NewRepository(h.DB)
-		valid, foundChapterID, err := mangaRepo.ValidateChapterNumber(c.Request.Context(), req.NovelID, req.Chapter)
+		valid, foundChapterID, err := chapterService.ValidateChapterNumber(c.Request.Context(), req.NovelID, req.Chapter)
 		if err == nil && valid && foundChapterID != nil {
 			chapterID = *foundChapterID
 		}

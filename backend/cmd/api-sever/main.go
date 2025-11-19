@@ -126,7 +126,7 @@ func main() {
 	ctx := context.Background()
 	go writeProcessor.StartProcessing(ctx, 30*time.Second)
 
-	mangaHandler := handlers.NewMangaHandlerWithService(mangaService)
+	mangaHandler := handlers.NewMangaHandlerWithService(db, mangaService)
 
 	// Initialize UDP notifier (optional - can be nil if UDP server not running)
 	// In production, you would start the UDP server separately or pass the server instance
