@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/comment"
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/favorite"
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/history"
+	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/library"
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/manga"
 	"github.com/ngocan-dev/mangahub/manga-backend/internal/chapter"
 )
@@ -50,10 +50,10 @@ func (p *WriteProcessor) processAddToLibrary(ctx context.Context, op WriteOperat
 	currentChapter, _ := op.Data["current_chapter"].(int)
 
 	// Create repository and add to library
-	favRepo := favorite.NewRepository(p.db)
+	libraryRepo := library.NewRepository(p.db)
 
 	// Check if already exists
-	exists, err := favRepo.CheckLibraryExists(ctx, op.UserID, op.MangaID)
+	exists, err := libraryRepo.CheckLibraryExists(ctx, op.UserID, op.MangaID)
 	if err != nil {
 		return err
 	}
@@ -65,7 +65,7 @@ func (p *WriteProcessor) processAddToLibrary(ctx context.Context, op WriteOperat
 		currentChapter = 1
 	}
 
-	return favRepo.AddToLibrary(ctx, op.UserID, op.MangaID, status, currentChapter)
+	return libraryRepo.AddToLibrary(ctx, op.UserID, op.MangaID, status, currentChapter)
 }
 
 // processUpdateProgress processes an update progress operation
@@ -85,10 +85,10 @@ func (p *WriteProcessor) processUpdateProgress(ctx context.Context, op WriteOper
 	}
 
 	// Create repository and update progress
-	favRepo := favorite.NewRepository(p.db)
+	libraryRepo := library.NewRepository(p.db)
 
 	// Check if manga exists in library
-	exists, err := favRepo.CheckLibraryExists(ctx, op.UserID, op.MangaID)
+	exists, err := libraryRepo.CheckLibraryExists(ctx, op.UserID, op.MangaID)
 	if err != nil {
 		return err
 	}

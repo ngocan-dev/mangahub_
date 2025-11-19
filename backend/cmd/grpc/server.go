@@ -10,8 +10,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/favorite"
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/history"
+	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/library"
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/manga"
 	"github.com/ngocan-dev/mangahub/manga-backend/internal/chapter"
 	pb "github.com/ngocan-dev/mangahub/manga-backend/proto/manga"
@@ -31,9 +31,9 @@ func NewServer(db *sql.DB) *Server {
 	chapterRepo := chapter.NewRepository(db)
 	chapterService := chapter.NewService(chapterRepo)
 	mangaService.SetChapterService(chapterService)
-	favoriteRepo := favorite.NewRepository(db)
 	historyRepo := history.NewRepository(db)
-	historyService := history.NewService(historyRepo, chapterService, favoriteRepo, mangaService)
+	libraryRepo := library.NewRepository(db)
+	historyService := history.NewService(historyRepo, chapterService, libraryRepo, mangaService)
 
 	return &Server{
 		db:             db,
