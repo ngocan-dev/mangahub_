@@ -673,14 +673,14 @@ func (h *MangaHandler) UpdateProgress(c *gin.Context) {
 			return
 		}
 
-		// Check for wrapped errors (invalid chapter wrapped in fmt.Errorf)
-		errStr := err.Error()
-		if errStr != "" && errors.Is(err, manga.ErrInvalidChapterNumber) {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": errStr,
-			})
-			return
-		}
+                // Check for wrapped errors (invalid chapter wrapped in fmt.Errorf)
+                errStr := err.Error()
+                if errStr != "" && errors.Is(err, history.ErrInvalidChapterNumber) {
+                        c.JSON(http.StatusBadRequest, gin.H{
+                                "error": errStr,
+                        })
+                        return
+                }
 
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "internal server error",
