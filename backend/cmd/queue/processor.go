@@ -11,6 +11,7 @@ import (
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/comment"
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/favorite"
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/history"
+	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/manga"
 )
 
 // WriteProcessor processes queued write operations
@@ -47,7 +48,6 @@ func (p *WriteProcessor) ProcessOperation(ctx context.Context, op WriteOperation
 func (p *WriteProcessor) processAddToLibrary(ctx context.Context, op WriteOperation) error {
 	status, _ := op.Data["status"].(string)
 	currentChapter, _ := op.Data["current_chapter"].(int)
-	isFavorite, _ := op.Data["is_favorite"].(bool)
 
 	// Create repository and add to library
 	favRepo := favorite.NewRepository(p.db)
@@ -65,7 +65,7 @@ func (p *WriteProcessor) processAddToLibrary(ctx context.Context, op WriteOperat
 		currentChapter = 1
 	}
 
-	return favRepo.AddToLibrary(ctx, op.UserID, op.MangaID, status, currentChapter, isFavorite)
+	return favRepo.AddToLibrary(ctx, op.UserID, op.MangaID, status, currentChapter)
 }
 
 // processUpdateProgress processes an update progress operation
