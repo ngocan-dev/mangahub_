@@ -15,3 +15,15 @@ type RegistrationRequest struct {
 	Email    string `json:"email" binding:"required"`
 	Password string `json:"password" binding:"required"`
 }
+
+// LoginRequest represents login request
+type LoginRequest struct {
+	UsernameOrEmail string `json:"username_or_email" binding:"required"`
+	Password        string `json:"password" binding:"required"`
+}
+
+// LoginResponse represents successful login response
+type LoginResponse struct {
+	Token string `json:"token"`
+	User  *User  `json:"user"`
+}
