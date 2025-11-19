@@ -11,12 +11,12 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/auth"
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/chapter"
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/comment"
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/favorite"
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/history"
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/manga"
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/security"
+"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/comment"
+"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/favorite"
+"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/history"
+"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/manga"
+"github.com/ngocan-dev/mangahub/manga-backend/cmd/security"
+"github.com/ngocan-dev/mangahub/manga-backend/internal/chapter"
 )
 
 type MangaHandler struct {

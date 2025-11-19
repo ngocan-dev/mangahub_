@@ -10,10 +10,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/chapter"
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/favorite"
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/history"
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/manga"
+	"github.com/ngocan-dev/mangahub/manga-backend/internal/chapter"
 	pb "github.com/ngocan-dev/mangahub/manga-backend/proto/manga"
 )
 
