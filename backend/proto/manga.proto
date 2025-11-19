@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package manga;
+
+option go_package = "github.com/ngocan-dev/mangahub/manga-backend/proto/manga";
+
+// MangaService provides methods to fetch manga data
+service MangaService {
+  // GetManga retrieves manga information by ID
+  rpc GetManga(GetMangaRequest) returns (GetMangaResponse);
+  // SearchManga searches for manga using various criteria
+  rpc SearchManga(SearchMangaRequest) returns (SearchMangaResponse);
+  // UpdateProgress updates user's reading progress for a manga
+  rpc UpdateProgress(UpdateProgressRequest) returns (UpdateProgressResponse);
+}
+
+// GetMangaRequest is the request message for GetManga
+message GetMangaRequest {
+  int64 manga_id = 1;
+}
+
+// GetMangaResponse is the response message for GetManga
+message GetMangaResponse {
+  Manga manga = 1;
+}
+
+// SearchMangaRequest is the request message for SearchManga
+message SearchMangaRequest {
+  string query = 1;    // Search query (title or author)
+  string genre = 2;   // Optional genre filter
+  string status = 3;  // Optional status filter
+  int32 page = 4;     // Page number (default: 1)
+  int32 limit = 5;    // Results per page (default: 20)
+}
+
+// SearchMangaResponse is the response message for SearchManga
+message SearchMangaResponse {
+  repeated Manga results = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 limit = 4;
+  int32 pages = 5;    // Total number of pages
+}
+
+// UpdateProgressRequest is the request message for UpdateProgress
+message UpdateProgressRequest {
+  int64 user_id = 1;        // User ID
+  int64 manga_id = 2;       // Manga ID
+  int32 current_chapter = 3; // Current chapter number
+}
+
+// UpdateProgressResponse is the response message for UpdateProgress
+message UpdateProgressResponse {
+  bool success = 1;
+  string message = 2;
+  int32 current_chapter = 3;
+  bool broadcasted = 4;    // Whether progress was broadcasted via TCP
+}
+
+// Manga represents manga information
+message Manga {
+  int64 id = 1;
+  string name = 2;
+  string title = 3;
+  string author = 4;
+  string description = 5;
+  string cover_image = 6;
+  string status = 7;
+  int32 chapter_count = 8;
+  repeated string genres = 9;
+  string created_at = 10;
+  string updated_at = 11;
+}
+
