@@ -10,6 +10,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/chapter"
+	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/favorite"
+	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/history"
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/manga"
 	pb "github.com/ngocan-dev/mangahub/manga-backend/proto/manga"
 )
@@ -17,15 +20,25 @@ import (
 // Server implements the MangaService gRPC server
 type Server struct {
 	pb.UnimplementedMangaServiceServer
-	db           *sql.DB
-	mangaService *manga.Service
+	db             *sql.DB
+	mangaService   *manga.Service
+	historyService *history.Service
 }
 
 // NewServer creates a new gRPC server instance
 func NewServer(db *sql.DB) *Server {
+	mangaService := manga.NewService(db)
+	chapterRepo := chapter.NewRepository(db)
+	chapterService := chapter.NewService(chapterRepo)
+	mangaService.SetChapterService(chapterService)
+	favoriteRepo := favorite.NewRepository(db)
+	historyRepo := history.NewRepository(db)
+	historyService := history.NewService(historyRepo, chapterService, favoriteRepo, mangaService)
+
 	return &Server{
-		db:           db,
-		mangaService: manga.NewService(db),
+		db:             db,
+		mangaService:   mangaService,
+		historyService: historyService,
 	}
 }
 
@@ -192,21 +205,24 @@ func (s *Server) UpdateProgress(ctx context.Context, req *pb.UpdateProgressReque
 	}
 
 	// Convert to domain request
-	updateReq := manga.UpdateProgressRequest{
+	updateReq := history.UpdateProgressRequest{
 		CurrentChapter: int(req.CurrentChapter),
 	}
 
 	// Step 3: Update user_progress table
 	// Step 4: Trigger TCP broadcast for real-time sync
-	updateResp, err := s.mangaService.UpdateProgress(ctx, req.UserId, req.MangaId, updateReq)
+	if s.historyService == nil {
+		return nil, status.Error(codes.Unavailable, "history service not configured")
+	}
+	updateResp, err := s.historyService.UpdateProgress(ctx, req.UserId, req.MangaId, updateReq)
 	if err != nil {
-		if errors.Is(err, manga.ErrMangaNotFound) {
+		if errors.Is(err, history.ErrMangaNotFound) {
 			return nil, status.Errorf(codes.NotFound, "manga not found: id=%d", req.MangaId)
 		}
-		if errors.Is(err, manga.ErrMangaNotInLibrary) {
+		if errors.Is(err, history.ErrMangaNotInLibrary) {
 			return nil, status.Errorf(codes.FailedPrecondition, "manga not in library. add it to your library first")
 		}
-		if errors.Is(err, manga.ErrInvalidChapterNumber) {
+		if errors.Is(err, history.ErrInvalidChapterNumber) {
 			return nil, status.Errorf(codes.InvalidArgument, "invalid chapter number: %v", err)
 		}
 		log.Printf("Error updating progress: %v", err)
