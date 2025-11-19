@@ -3,7 +3,6 @@ package manga
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"strings"
 )
 
@@ -19,7 +18,7 @@ func NewRepository(db *sql.DB) *Repository {
 
 // Search searches for manga/novels based on criteria
 func (r *Repository) Search(ctx context.Context, req SearchRequest) ([]Manga, int, error) {
-	query := `
+	baseQuery := `
         SELECT
             Novel_Id,
             Novel_Name,
@@ -32,26 +31,33 @@ func (r *Repository) Search(ctx context.Context, req SearchRequest) ([]Manga, in
             Rating_Point
         FROM Novels
     `
-	var conditions []string
-	var args []interface{}
 
+	var (
+		conditions []string
+		args       []interface{}
+	)
+
+	// --- Filters ---
 	if req.Query != "" {
+		like := "%" + req.Query + "%"
 		conditions = append(conditions, "(Novel_Name LIKE ? OR Title LIKE ? OR Author LIKE ? OR Description LIKE ?)")
-		like := fmt.Sprintf("%%%s%%", req.Query)
 		args = append(args, like, like, like, like)
 	}
+
 	if len(req.Genres) > 0 {
 		placeholders := make([]string, len(req.Genres))
-		for i, genre := range req.Genres {
+		for i, g := range req.Genres {
 			placeholders[i] = "?"
-			args = append(args, genre)
+			args = append(args, g)
 		}
-		conditions = append(conditions, fmt.Sprintf("Genre IN (%s)", strings.Join(placeholders, ",")))
+		conditions = append(conditions, "Genre IN ("+strings.Join(placeholders, ",")+")")
 	}
+
 	if req.Status != "" {
 		conditions = append(conditions, "Status = ?")
 		args = append(args, req.Status)
 	}
+
 	if req.MinRating != nil {
 		conditions = append(conditions, "Rating_Point >= ?")
 		args = append(args, *req.MinRating)
@@ -60,6 +66,7 @@ func (r *Repository) Search(ctx context.Context, req SearchRequest) ([]Manga, in
 		conditions = append(conditions, "Rating_Point <= ?")
 		args = append(args, *req.MaxRating)
 	}
+
 	if req.YearFrom != nil {
 		conditions = append(conditions, "Year >= ?")
 		args = append(args, *req.YearFrom)
@@ -69,10 +76,13 @@ func (r *Repository) Search(ctx context.Context, req SearchRequest) ([]Manga, in
 		args = append(args, *req.YearTo)
 	}
 
+	// --- Build WHERE ---
+	query := baseQuery
 	if len(conditions) > 0 {
 		query += " WHERE " + strings.Join(conditions, " AND ")
 	}
 
+	// --- Sorting ---
 	switch req.SortBy {
 	case "rating":
 		query += " ORDER BY Rating_Point DESC"
@@ -82,6 +92,7 @@ func (r *Repository) Search(ctx context.Context, req SearchRequest) ([]Manga, in
 		query += " ORDER BY Rating_Point DESC"
 	}
 
+	// --- Pagination ---
 	limit := req.Limit
 	if limit <= 0 {
 		limit = 20
@@ -95,9 +106,17 @@ func (r *Repository) Search(ctx context.Context, req SearchRequest) ([]Manga, in
 	}
 	offset := (page - 1) * limit
 
+	page := req.Page
+	if page <= 0 {
+		page = 1
+	}
+
+	offset := (page - 1) * limit
+
 	query += " LIMIT ? OFFSET ?"
 	args = append(args, limit, offset)
 
+	// --- Execute Search Query ---
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, 0, err
@@ -117,17 +136,25 @@ func (r *Repository) Search(ctx context.Context, req SearchRequest) ([]Manga, in
 			&m.Description,
 			&m.Image,
 			&m.RatingPoint,
-		); err == nil {
-			results = append(results, m)
+		); err != nil {
+			return nil, 0, err
 		}
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	// --- Count Query ---
 	countQuery := "SELECT COUNT(*) FROM Novels"
 	if len(conditions) > 0 {
 		countQuery += " WHERE " + strings.Join(conditions, " AND ")
 	}
+
+	// countArgs = all args except LIMIT/OFFSET
+	countArgs := args[:len(args)-2]
+
 	var total int
-	countArgs := append([]interface{}{}, args[:len(args)-2]...)
 	if err := r.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
@@ -142,6 +169,7 @@ func (r *Repository) GetByID(ctx context.Context, mangaID int64) (*Manga, error)
         FROM Novels
         WHERE Novel_Id = ?
     `
+
 	var m Manga
 	err := r.db.QueryRowContext(ctx, query, mangaID).Scan(
 		&m.ID,
@@ -154,6 +182,7 @@ func (r *Repository) GetByID(ctx context.Context, mangaID int64) (*Manga, error)
 		&m.Image,
 		&m.RatingPoint,
 	)
+
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

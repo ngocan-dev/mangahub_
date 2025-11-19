@@ -124,21 +124,6 @@ func (h *MangaHandler) Search(c *gin.Context) {
 		})
 		return
 	}
-
-	// Success: Return paginated results
-	c.JSON(http.StatusOK, response)
-}
-
-// CreateReview handles review creation requests
-// Main Success Scenario:
-// 1. User navigates to manga and clicks "Write Review"
-// 2. User writes review text and assigns rating (1-10)
-// 3. System validates review content and rating
-// 4. System saves review to database with timestamp
-// 5. System displays review on manga page
-func (h *MangaHandler) CreateReview(c *gin.Context) {
-	// Get user ID from context (set by auth middleware)
-	userIDInterface, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error": "authentication required",
@@ -238,8 +223,6 @@ func (h *MangaHandler) CreateReview(c *gin.Context) {
 // 4. System displays reviews sorted by helpfulness or date
 // 5. User can read individual reviews and ratings
 func (h *MangaHandler) GetReviews(c *gin.Context) {
-	// Get manga ID from URL
-	mangaID, err := getMangaIDFromParam(c)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "invalid manga id",
@@ -293,14 +276,6 @@ func (h *MangaHandler) GetReviews(c *gin.Context) {
 // 5. User can click through to view details
 func (h *MangaHandler) GetFriendsActivityFeed(c *gin.Context) {
 	// Get user ID from context (set by auth middleware)
-	userIDInterface, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "authentication required",
-		})
-		return
-	}
-
 	userID, ok := userIDInterface.(int64)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -470,25 +445,7 @@ func getMangaIDFromParam(c *gin.Context) (int64, error) {
 	}
 	return id, nil
 }
-
-// GetDetails handles manga detail requests
-// Main Success Scenario:
-// 1. User selects manga from search results or direct URL
-// 2. System retrieves manga details from database
-// 3. System displays title, author, genres, description, chapter count
-// 4. System shows user's current progress if logged in
-// 5. User can add manga to library or update progress
 func (h *MangaHandler) GetDetails(c *gin.Context) {
-	// Get manga ID from URL parameter
-	mangaIDStr := c.Param("id")
-	var mangaID int64
-	if _, err := fmt.Sscanf(mangaIDStr, "%d", &mangaID); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "invalid manga id",
-		})
-		return
-	}
-
 	// Try to get user ID from JWT token (optional - endpoint works without auth)
 	var userID *int64
 	authHeader := c.GetHeader("Authorization")
@@ -538,48 +495,7 @@ func (h *MangaHandler) GetDetails(c *gin.Context) {
 	// Success: Return manga details
 	c.JSON(http.StatusOK, detail)
 }
-
-// AddToLibrary handles adding manga to user's library
-// Main Success Scenario:
-// 1. User clicks "Add to Library" from manga details
-// 2. System presents status options (Reading, Completed, Plan to Read)
-// 3. User selects initial status and current chapter
-// 4. System creates user_progress record in database
-// 5. System confirms addition and updates UI
 func (h *MangaHandler) AddToLibrary(c *gin.Context) {
-	// Get user ID from JWT token (required for this endpoint)
-	authHeader := c.GetHeader("Authorization")
-	if authHeader == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "authentication required",
-		})
-		return
-	}
-
-	// Extract token
-	tokenString := ""
-	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
-		tokenString = authHeader[7:]
-	} else {
-		tokenString = authHeader
-	}
-
-	// Validate token and get user ID
-	// Invalid tokens are rejected
-	// Expired tokens trigger reauthentication
-	claims, err := auth.ValidateToken(tokenString)
-	if err != nil {
-		// Handle different error types
-		if errors.Is(err, auth.ErrExpiredToken) {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":   "expired token",
-				"message": "your session has expired. please login again",
-				"code":    "TOKEN_EXPIRED",
-			})
-			return
-		}
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "invalid token",
 			"message": "authentication required",
 		})
 		return
@@ -678,39 +594,6 @@ func (h *MangaHandler) AddToLibrary(c *gin.Context) {
 // 4. System triggers TCP broadcast to connected clients
 // 5. System confirms update to user
 func (h *MangaHandler) UpdateProgress(c *gin.Context) {
-	// Get user ID from JWT token (required for this endpoint)
-	authHeader := c.GetHeader("Authorization")
-	if authHeader == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "authentication required",
-		})
-		return
-	}
-
-	// Extract token
-	tokenString := ""
-	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
-		tokenString = authHeader[7:]
-	} else {
-		tokenString = authHeader
-	}
-
-	// Validate token and get user ID
-	// Invalid tokens are rejected
-	// Expired tokens trigger reauthentication
-	claims, err := auth.ValidateToken(tokenString)
-	if err != nil {
-		// Handle different error types
-		if errors.Is(err, auth.ErrExpiredToken) {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":   "expired token",
-				"message": "your session has expired. please login again",
-				"code":    "TOKEN_EXPIRED",
-			})
-			return
-		}
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "invalid token",
 			"message": "authentication required",
 		})
 		return
