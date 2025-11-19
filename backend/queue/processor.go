@@ -7,10 +7,11 @@ import (
 	"log"
 	"time"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/chapter"
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/comment"
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/favorite"
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/history"
+	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/library"
+	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/manga"
+	"github.com/ngocan-dev/mangahub/manga-backend/internal/chapter"
 )
 
 // WriteProcessor processes queued write operations
@@ -47,13 +48,12 @@ func (p *WriteProcessor) ProcessOperation(ctx context.Context, op WriteOperation
 func (p *WriteProcessor) processAddToLibrary(ctx context.Context, op WriteOperation) error {
 	status, _ := op.Data["status"].(string)
 	currentChapter, _ := op.Data["current_chapter"].(int)
-	isFavorite, _ := op.Data["is_favorite"].(bool)
 
 	// Create repository and add to library
-	favRepo := favorite.NewRepository(p.db)
+	libraryRepo := library.NewRepository(p.db)
 
 	// Check if already exists
-	exists, err := favRepo.CheckLibraryExists(ctx, op.UserID, op.MangaID)
+	exists, err := libraryRepo.CheckLibraryExists(ctx, op.UserID, op.MangaID)
 	if err != nil {
 		return err
 	}
@@ -65,7 +65,7 @@ func (p *WriteProcessor) processAddToLibrary(ctx context.Context, op WriteOperat
 		currentChapter = 1
 	}
 
-	return favRepo.AddToLibrary(ctx, op.UserID, op.MangaID, status, currentChapter, isFavorite)
+	return libraryRepo.AddToLibrary(ctx, op.UserID, op.MangaID, status, currentChapter)
 }
 
 // processUpdateProgress processes an update progress operation
@@ -85,10 +85,10 @@ func (p *WriteProcessor) processUpdateProgress(ctx context.Context, op WriteOper
 	}
 
 	// Create repository and update progress
-	favRepo := favorite.NewRepository(p.db)
+	libraryRepo := library.NewRepository(p.db)
 
 	// Check if manga exists in library
-	exists, err := favRepo.CheckLibraryExists(ctx, op.UserID, op.MangaID)
+	exists, err := libraryRepo.CheckLibraryExists(ctx, op.UserID, op.MangaID)
 	if err != nil {
 		return err
 	}
@@ -96,19 +96,20 @@ func (p *WriteProcessor) processUpdateProgress(ctx context.Context, op WriteOper
 		return fmt.Errorf("manga not in library")
 	}
 
-	// Get max chapter
 	chapterService := chapter.NewService(chapter.NewRepository(p.db))
-	maxChapter, err := chapterService.GetMaxChapterNumber(ctx, op.MangaID)
+	summary, err := chapterService.ValidateChapter(ctx, op.MangaID, currentChapter)
 	if err != nil {
 		return err
 	}
-	if currentChapter > maxChapter {
-		return fmt.Errorf("chapter exceeds maximum")
+	if summary == nil {
+		return fmt.Errorf("chapter not found")
 	}
 
-	// Get chapter ID if available (optional, can be nil)
 	var chapterID *int64
-	// Try to find chapter by number - if not found, chapterID remains nil which is acceptable
+	if summary.ID != 0 {
+		id := summary.ID
+		chapterID = &id
+	}
 
 	historyRepo := history.NewRepository(p.db)
 	return historyRepo.UpdateProgress(ctx, op.UserID, op.MangaID, currentChapter, chapterID)

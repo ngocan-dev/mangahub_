@@ -10,9 +10,9 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/auth"
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/chapter"
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/manga"
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/udp"
+"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/manga"
+"github.com/ngocan-dev/mangahub/manga-backend/cmd/udp"
+"github.com/ngocan-dev/mangahub/manga-backend/internal/chapter"
 )
 
 type NotificationHandler struct {
@@ -88,10 +88,9 @@ func (h *NotificationHandler) NotifyChapterRelease(c *gin.Context) {
 	chapterID := req.ChapterID
 	if chapterID == 0 {
 		// Try to find chapter ID from chapter number
-		mangaRepo := manga.NewRepository(h.DB)
-		valid, foundChapterID, err := chapterService.ValidateChapterNumber(c.Request.Context(), req.NovelID, req.Chapter)
-		if err == nil && valid && foundChapterID != nil {
-			chapterID = *foundChapterID
+		summary, err := chapterService.ValidateChapter(c.Request.Context(), req.NovelID, req.Chapter)
+		if err == nil && summary != nil {
+			chapterID = summary.ID
 		}
 		// If not found, we'll proceed with chapterID = 0 (optional field)
 	}

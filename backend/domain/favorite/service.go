@@ -4,27 +4,27 @@ import (
 	"context"
 	"errors"
 	"fmt"
+<<<<<<< HEAD:backend/domain/favorite/service.go
 
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/history"
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/rating"
 	internalmanga "github.com/ngocan-dev/mangahub/manga-backend/internal/manga"
+=======
+>>>>>>> 6cdd9d56804641720cdb3be51e63eaf36cd18f99:backend/cmd/domain/favorite/service.go
 )
 
 var (
-	ErrMangaNotFound         = errors.New("manga not found")
-	ErrMangaAlreadyInLibrary = errors.New("manga already in library")
-	ErrInvalidStatus         = errors.New("invalid status")
-	ErrDatabaseError         = errors.New("database error")
+	ErrDatabaseError     = errors.New("database error")
+	ErrMangaNotInLibrary = errors.New("manga not in library")
+	ErrAlreadyFavorite   = errors.New("manga already in favorites")
 )
 
-var validStatuses = map[string]bool{
-	"plan_to_read": true,
-	"reading":      true,
-	"completed":    true,
-	"on_hold":      true,
-	"dropped":      true,
+// LibraryChecker ensures the manga exists in the user's library
+type LibraryChecker interface {
+	CheckLibraryExists(ctx context.Context, userID, mangaID int64) (bool, error)
 }
 
+<<<<<<< HEAD:backend/domain/favorite/service.go
 // ProgressProvider exposes progress retrieval
 type ProgressProvider interface {
 	GetProgress(ctx context.Context, userID, mangaID int64) (*history.UserProgress, error)
@@ -46,33 +46,41 @@ type Service struct {
 // NewService constructs favorite service
 func NewService(repo *Repository, mangaService internalmanga.GetByID, progressSvc ProgressProvider, ratingSvc RatingProvider) *Service {
 	return &Service{repo: repo, mangaService: mangaService, progressSvc: progressSvc, ratingSvc: ratingSvc}
+=======
+// Service coordinates favorite use cases
+type Service struct {
+	repo           *Repository
+	libraryChecker LibraryChecker
 }
 
-// AddToLibrary inserts manga into user's library
-func (s *Service) AddToLibrary(ctx context.Context, userID, mangaID int64, req AddToLibraryRequest) (*AddToLibraryResponse, error) {
-	if !validStatuses[req.Status] {
-		return nil, ErrInvalidStatus
-	}
+// NewService constructs favorite service
+func NewService(repo *Repository, libraryChecker LibraryChecker) *Service {
+	return &Service{repo: repo, libraryChecker: libraryChecker}
+>>>>>>> 6cdd9d56804641720cdb3be51e63eaf36cd18f99:backend/cmd/domain/favorite/service.go
+}
 
-	manga, err := s.mangaService.GetByID(ctx, mangaID)
+// AddFavorite marks a manga as favorite for the user
+func (s *Service) AddFavorite(ctx context.Context, userID, mangaID int64) error {
+	exists, err := s.libraryChecker.CheckLibraryExists(ctx, userID, mangaID)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
+		return fmt.Errorf("%w: %v", ErrDatabaseError, err)
 	}
-	if manga == nil {
-		return nil, ErrMangaNotFound
+	if !exists {
+		return ErrMangaNotInLibrary
 	}
 
-	exists, err := s.repo.CheckLibraryExists(ctx, userID, mangaID)
+	isFavorite, err := s.repo.IsFavorite(ctx, userID, mangaID)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
+		return fmt.Errorf("%w: %v", ErrDatabaseError, err)
 	}
-	if exists {
-		return nil, ErrMangaAlreadyInLibrary
+	if isFavorite {
+		return ErrAlreadyFavorite
 	}
 
-	if err := s.repo.AddToLibrary(ctx, userID, mangaID, req.Status, req.CurrentChapter, req.IsFavorite); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
+	if err := s.repo.AddFavorite(ctx, userID, mangaID); err != nil {
+		return fmt.Errorf("%w: %v", ErrDatabaseError, err)
 	}
+<<<<<<< HEAD:backend/domain/favorite/service.go
 
 	libraryStatus, err := s.repo.GetLibraryStatus(ctx, userID, mangaID)
 	if err != nil {
@@ -96,3 +104,49 @@ func (s *Service) AddToLibrary(ctx context.Context, userID, mangaID int64, req A
 		LibraryStatus: libraryStatus,
 		UserProgress:  progress,
 	}, nil
+=======
+	return nil
+}
+
+// RemoveFavorite removes a manga from user's favorites
+func (s *Service) RemoveFavorite(ctx context.Context, userID, mangaID int64) error {
+	exists, err := s.libraryChecker.CheckLibraryExists(ctx, userID, mangaID)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrDatabaseError, err)
+	}
+	if !exists {
+		return ErrMangaNotInLibrary
+	}
+
+	isFavorite, err := s.repo.IsFavorite(ctx, userID, mangaID)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrDatabaseError, err)
+	}
+	if !isFavorite {
+		return nil
+	}
+
+	if err := s.repo.RemoveFavorite(ctx, userID, mangaID); err != nil {
+		return fmt.Errorf("%w: %v", ErrDatabaseError, err)
+	}
+	return nil
+}
+
+// GetFavorites returns all favorite entries for a user
+func (s *Service) GetFavorites(ctx context.Context, userID int64) (*FavoritesResponse, error) {
+	entries, err := s.repo.GetFavorites(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
+	}
+	return &FavoritesResponse{Favorites: entries}, nil
+}
+
+// IsFavorite reports whether a manga is favorited by the user
+func (s *Service) IsFavorite(ctx context.Context, userID, mangaID int64) (*FavoriteStatusResponse, error) {
+	isFavorite, err := s.repo.IsFavorite(ctx, userID, mangaID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
+	}
+	return &FavoriteStatusResponse{IsFavorite: isFavorite}, nil
+}
+>>>>>>> 6cdd9d56804641720cdb3be51e63eaf36cd18f99:backend/cmd/domain/favorite/service.go

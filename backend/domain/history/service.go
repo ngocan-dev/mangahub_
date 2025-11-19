@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	internalchapter "github.com/ngocan-dev/mangahub/manga-backend/internal/chapter"
 	internalmanga "github.com/ngocan-dev/mangahub/manga-backend/internal/manga"
 )
 
@@ -18,8 +19,7 @@ var (
 
 // ChapterService exposes chapter operations needed by history
 type ChapterService interface {
-	GetMaxChapterNumber(ctx context.Context, mangaID int64) (int, error)
-	ValidateChapterNumber(ctx context.Context, mangaID int64, chapter int) (bool, *int64, error)
+	ValidateChapter(ctx context.Context, mangaID int64, chapter int) (*internalchapter.ChapterSummary, error)
 }
 
 // LibraryChecker verifies library membership
@@ -96,20 +96,18 @@ func (s *Service) UpdateProgress(ctx context.Context, userID, mangaID int64, req
 		return nil, ErrMangaNotInLibrary
 	}
 
-	maxChapter, err := s.chapterService.GetMaxChapterNumber(ctx, mangaID)
+	summary, err := s.chapterService.ValidateChapter(ctx, mangaID, req.CurrentChapter)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
 	}
-	if maxChapter > 0 && req.CurrentChapter > maxChapter {
-		return nil, fmt.Errorf("%w: chapter %d exceeds maximum chapter %d", ErrInvalidChapterNumber, req.CurrentChapter, maxChapter)
+	if summary == nil {
+		return nil, ErrInvalidChapterNumber
 	}
 
-	valid, chapterID, err := s.chapterService.ValidateChapterNumber(ctx, mangaID, req.CurrentChapter)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
-	}
-	if !valid {
-		chapterID = nil
+	var chapterID *int64
+	if summary.ID != 0 {
+		id := summary.ID
+		chapterID = &id
 	}
 
 	if err := s.repo.UpdateProgress(ctx, userID, mangaID, req.CurrentChapter, chapterID); err != nil {

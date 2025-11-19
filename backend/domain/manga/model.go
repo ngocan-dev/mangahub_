@@ -1,5 +1,7 @@
 package manga
 
+import internalchapter "github.com/ngocan-dev/mangahub/manga-backend/internal/chapter"
+
 // Manga represents a manga/novel entity
 type Manga struct {
 	ID          int64   `json:"id"`
@@ -39,5 +41,6 @@ type SearchResponse struct {
 // MangaDetail represents detailed manga information
 type MangaDetail struct {
 	Manga
-	ChapterCount int `json:"chapter_count"`
+	ChapterCount int                              `json:"chapter_count"`
+	Chapters     []internalchapter.ChapterSummary `json:"chapters,omitempty"`
 }
