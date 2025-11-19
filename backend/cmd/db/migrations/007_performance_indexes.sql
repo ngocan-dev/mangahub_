@@ -9,7 +9,7 @@ CREATE INDEX IF NOT EXISTS idx_reading_progress_last_read ON Reading_Progress(La
 CREATE INDEX IF NOT EXISTS idx_reading_progress_user_date ON Reading_Progress(User_Id, Last_Read_At);
 
 -- Indexes for User_Library table
--- Used in: AddToLibrary, GetLibrary, GetFriendsActivities, CheckMangaInCompletedLibrary
+-- Used in: AddToLibrary, GetLibrary, GetFriendsActivities, IsMangaCompleted
 CREATE INDEX IF NOT EXISTS idx_user_library_user_novel ON User_Library(User_Id, Novel_Id);
 CREATE INDEX IF NOT EXISTS idx_user_library_status ON User_Library(User_Id, Status);
 CREATE INDEX IF NOT EXISTS idx_user_library_completed ON User_Library(User_Id, Status, Completed_At) WHERE Status = 'completed';

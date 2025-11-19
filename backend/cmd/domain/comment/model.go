@@ -42,3 +42,20 @@ type GetReviewsResponse struct {
 	AverageRating float64  `json:"average_rating"`
 	TotalReviews  int      `json:"total_reviews"`
 }
+
+// UpdateReviewRequest captures partial review updates
+type UpdateReviewRequest struct {
+	Rating  *int    `json:"rating"`
+	Content *string `json:"content"`
+}
+
+// UpdateReviewResponse represents an updated review payload
+type UpdateReviewResponse struct {
+	Message string  `json:"message"`
+	Review  *Review `json:"review"`
+}
+
+// DeleteReviewResponse acknowledges review deletion
+type DeleteReviewResponse struct {
+	Message string `json:"message"`
+}
