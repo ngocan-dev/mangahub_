@@ -11,25 +11,49 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/auth"
+	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/chapter"
+	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/comment"
+	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/favorite"
+	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/history"
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/manga"
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/security"
 )
 
 type MangaHandler struct {
-	service *manga.Service
+	mangaService    *manga.Service
+	favoriteService *favorite.Service
+	historyService  *history.Service
+	commentService  *comment.Service
 }
 
 func NewMangaHandler(db *sql.DB, mangaCache interface{}) *MangaHandler {
-	service := GetMangaService(db, mangaCache)
-	return &MangaHandler{
-		service: service,
-	}
+	mangaService := GetMangaService(db, mangaCache)
+	return buildMangaHandler(db, mangaService)
 }
 
 // NewMangaHandlerWithService creates a handler with an existing service
-func NewMangaHandlerWithService(service *manga.Service) *MangaHandler {
+func NewMangaHandlerWithService(db *sql.DB, service *manga.Service) *MangaHandler {
+	return buildMangaHandler(db, service)
+}
+
+func buildMangaHandler(conn *sql.DB, mangaService *manga.Service) *MangaHandler {
+	chapterRepo := chapter.NewRepository(conn)
+	chapterService := chapter.NewService(chapterRepo)
+	mangaService.SetChapterService(chapterService)
+
+	historyRepo := history.NewRepository(conn)
+	favoriteRepo := favorite.NewRepository(conn)
+	commentRepo := comment.NewRepository(conn)
+
+	historyService := history.NewService(historyRepo, chapterService, favoriteRepo, mangaService)
+	favoriteService := favorite.NewService(favoriteRepo, mangaService, historyService)
+	commentService := comment.NewService(commentRepo, mangaService)
+
 	return &MangaHandler{
-		service: service,
+		mangaService:    mangaService,
+		favoriteService: favoriteService,
+		historyService:  historyService,
+		commentService:  commentService,
 	}
 }
 
@@ -37,7 +61,6 @@ func NewMangaHandlerWithService(service *manga.Service) *MangaHandler {
 func GetMangaService(db *sql.DB, mangaCache interface{}) *manga.Service {
 	service := manga.NewService(db)
 
-	// Set cache if available
 	if mangaCache != nil {
 		if cache, ok := mangaCache.(manga.MangaCacher); ok {
 			service.SetCache(cache)
@@ -72,7 +95,7 @@ func (h *MangaHandler) Search(c *gin.Context) {
 	}
 
 	// Perform search
-	response, err := h.service.Search(c.Request.Context(), req)
+	response, err := h.mangaService.Search(c.Request.Context(), req)
 	if err != nil {
 		// A2: Database error - System logs error and returns generic message
 		if errors.Is(err, manga.ErrDatabaseError) {
@@ -101,21 +124,6 @@ func (h *MangaHandler) Search(c *gin.Context) {
 		})
 		return
 	}
-
-	// Success: Return paginated results
-	c.JSON(http.StatusOK, response)
-}
-
-// CreateReview handles review creation requests
-// Main Success Scenario:
-// 1. User navigates to manga and clicks "Write Review"
-// 2. User writes review text and assigns rating (1-10)
-// 3. System validates review content and rating
-// 4. System saves review to database with timestamp
-// 5. System displays review on manga page
-func (h *MangaHandler) CreateReview(c *gin.Context) {
-	// Get user ID from context (set by auth middleware)
-	userIDInterface, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error": "authentication required",
@@ -141,7 +149,7 @@ func (h *MangaHandler) CreateReview(c *gin.Context) {
 	}
 
 	// Bind request body
-	var req manga.CreateReviewRequest
+	var req comment.CreateReviewRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":   "invalid request body",
@@ -151,45 +159,45 @@ func (h *MangaHandler) CreateReview(c *gin.Context) {
 	}
 
 	// Create review
-	response, err := h.service.CreateReview(c.Request.Context(), userID, mangaID, req)
+	response, err := h.commentService.CreateReview(c.Request.Context(), userID, mangaID, req)
 	if err != nil {
-		if errors.Is(err, manga.ErrMangaNotFound) {
+		if errors.Is(err, comment.ErrMangaNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{
 				"error": "manga not found",
 			})
 			return
 		}
-		if errors.Is(err, manga.ErrMangaNotCompleted) {
+		if errors.Is(err, comment.ErrMangaNotCompleted) {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": "manga must be in your completed list to write a review",
 			})
 			return
 		}
-		if errors.Is(err, manga.ErrReviewAlreadyExists) {
+		if errors.Is(err, comment.ErrReviewAlreadyExists) {
 			c.JSON(http.StatusConflict, gin.H{
 				"error": "you have already written a review for this manga",
 			})
 			return
 		}
-		if errors.Is(err, manga.ErrInvalidReviewRating) {
+		if errors.Is(err, comment.ErrInvalidReviewRating) {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": "rating must be between 1 and 10",
 			})
 			return
 		}
-		if errors.Is(err, manga.ErrReviewContentTooShort) {
+		if errors.Is(err, comment.ErrReviewContentTooShort) {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": "review content must be at least 10 characters",
 			})
 			return
 		}
-		if errors.Is(err, manga.ErrReviewContentTooLong) {
+		if errors.Is(err, comment.ErrReviewContentTooLong) {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": "review content must not exceed 5000 characters",
 			})
 			return
 		}
-		if errors.Is(err, manga.ErrDatabaseError) {
+		if errors.Is(err, comment.ErrDatabaseError) {
 			log.Printf("Database error during review creation: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": "an error occurred while creating review. please try again later",
@@ -215,8 +223,6 @@ func (h *MangaHandler) CreateReview(c *gin.Context) {
 // 4. System displays reviews sorted by helpfulness or date
 // 5. User can read individual reviews and ratings
 func (h *MangaHandler) GetReviews(c *gin.Context) {
-	// Get manga ID from URL
-	mangaID, err := getMangaIDFromParam(c)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "invalid manga id",
@@ -242,9 +248,9 @@ func (h *MangaHandler) GetReviews(c *gin.Context) {
 	sortBy := c.DefaultQuery("sort_by", "date") // Default: date
 
 	// Get reviews
-	response, err := h.service.GetReviews(c.Request.Context(), mangaID, page, limit, sortBy)
+	response, err := h.commentService.GetReviews(c.Request.Context(), mangaID, page, limit, sortBy)
 	if err != nil {
-		if errors.Is(err, manga.ErrDatabaseError) {
+		if errors.Is(err, comment.ErrDatabaseError) {
 			log.Printf("Database error during review retrieval: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": "an error occurred while retrieving reviews. please try again later",
@@ -270,14 +276,6 @@ func (h *MangaHandler) GetReviews(c *gin.Context) {
 // 5. User can click through to view details
 func (h *MangaHandler) GetFriendsActivityFeed(c *gin.Context) {
 	// Get user ID from context (set by auth middleware)
-	userIDInterface, exists := c.Get("user_id")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "authentication required",
-		})
-		return
-	}
-
 	userID, ok := userIDInterface.(int64)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -301,9 +299,9 @@ func (h *MangaHandler) GetFriendsActivityFeed(c *gin.Context) {
 	}
 
 	// Get activity feed
-	response, err := h.service.GetFriendsActivityFeed(c.Request.Context(), userID, page, limit)
+	response, err := h.historyService.GetFriendsActivityFeed(c.Request.Context(), userID, page, limit)
 	if err != nil {
-		if errors.Is(err, manga.ErrDatabaseError) {
+		if errors.Is(err, history.ErrDatabaseError) {
 			log.Printf("Database error during activity feed retrieval: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": "an error occurred while retrieving activity feed. please try again later",
@@ -349,9 +347,9 @@ func (h *MangaHandler) GetReadingStatistics(c *gin.Context) {
 	forceRecalculate := c.Query("recalculate") == "true"
 
 	// Get statistics
-	stats, err := h.service.GetReadingStatistics(c.Request.Context(), userID, forceRecalculate)
+	stats, err := h.historyService.GetReadingStatistics(c.Request.Context(), userID, forceRecalculate)
 	if err != nil {
-		if errors.Is(err, manga.ErrDatabaseError) {
+		if errors.Is(err, history.ErrDatabaseError) {
 			log.Printf("Database error during statistics calculation: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": "an error occurred while calculating statistics. please try again later",
@@ -394,7 +392,7 @@ func (h *MangaHandler) GetReadingAnalytics(c *gin.Context) {
 	}
 
 	// Step 4: Parse query parameters for time period filtering
-	var req manga.ReadingAnalyticsRequest
+	var req history.ReadingAnalyticsRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
 		// Use defaults if binding fails
 		req.TimePeriod = "all_time"
@@ -419,9 +417,9 @@ func (h *MangaHandler) GetReadingAnalytics(c *gin.Context) {
 	}
 
 	// Get analytics
-	stats, err := h.service.GetReadingAnalytics(c.Request.Context(), userID, req)
+	stats, err := h.historyService.GetReadingAnalytics(c.Request.Context(), userID, req)
 	if err != nil {
-		if errors.Is(err, manga.ErrDatabaseError) {
+		if errors.Is(err, history.ErrDatabaseError) {
 			log.Printf("Database error during analytics retrieval: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": "an error occurred while retrieving analytics. please try again later",
@@ -447,25 +445,7 @@ func getMangaIDFromParam(c *gin.Context) (int64, error) {
 	}
 	return id, nil
 }
-
-// GetDetails handles manga detail requests
-// Main Success Scenario:
-// 1. User selects manga from search results or direct URL
-// 2. System retrieves manga details from database
-// 3. System displays title, author, genres, description, chapter count
-// 4. System shows user's current progress if logged in
-// 5. User can add manga to library or update progress
 func (h *MangaHandler) GetDetails(c *gin.Context) {
-	// Get manga ID from URL parameter
-	mangaIDStr := c.Param("id")
-	var mangaID int64
-	if _, err := fmt.Sscanf(mangaIDStr, "%d", &mangaID); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "invalid manga id",
-		})
-		return
-	}
-
 	// Try to get user ID from JWT token (optional - endpoint works without auth)
 	var userID *int64
 	authHeader := c.GetHeader("Authorization")
@@ -489,7 +469,7 @@ func (h *MangaHandler) GetDetails(c *gin.Context) {
 	}
 
 	// Get manga details
-	detail, err := h.service.GetDetails(c.Request.Context(), mangaID, userID)
+	detail, err := h.mangaService.GetDetails(c.Request.Context(), mangaID, userID)
 	if err != nil {
 		if errors.Is(err, manga.ErrMangaNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{
@@ -515,48 +495,7 @@ func (h *MangaHandler) GetDetails(c *gin.Context) {
 	// Success: Return manga details
 	c.JSON(http.StatusOK, detail)
 }
-
-// AddToLibrary handles adding manga to user's library
-// Main Success Scenario:
-// 1. User clicks "Add to Library" from manga details
-// 2. System presents status options (Reading, Completed, Plan to Read)
-// 3. User selects initial status and current chapter
-// 4. System creates user_progress record in database
-// 5. System confirms addition and updates UI
 func (h *MangaHandler) AddToLibrary(c *gin.Context) {
-	// Get user ID from JWT token (required for this endpoint)
-	authHeader := c.GetHeader("Authorization")
-	if authHeader == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "authentication required",
-		})
-		return
-	}
-
-	// Extract token
-	tokenString := ""
-	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
-		tokenString = authHeader[7:]
-	} else {
-		tokenString = authHeader
-	}
-
-	// Validate token and get user ID
-	// Invalid tokens are rejected
-	// Expired tokens trigger reauthentication
-	claims, err := auth.ValidateToken(tokenString)
-	if err != nil {
-		// Handle different error types
-		if errors.Is(err, auth.ErrExpiredToken) {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":   "expired token",
-				"message": "your session has expired. please login again",
-				"code":    "TOKEN_EXPIRED",
-			})
-			return
-		}
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "invalid token",
 			"message": "authentication required",
 		})
 		return
@@ -582,7 +521,7 @@ func (h *MangaHandler) AddToLibrary(c *gin.Context) {
 	}
 
 	// Bind request body
-	var req manga.AddToLibraryRequest
+	var req favorite.AddToLibraryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "invalid request body. status is required",
@@ -600,10 +539,10 @@ func (h *MangaHandler) AddToLibrary(c *gin.Context) {
 	}
 
 	// Add to library
-	response, err := h.service.AddToLibrary(c.Request.Context(), userID, mangaID, req)
+	response, err := h.favoriteService.AddToLibrary(c.Request.Context(), userID, mangaID, req)
 	if err != nil {
 		// A1: Manga already in library - System offers to update status
-		if errors.Is(err, manga.ErrMangaAlreadyInLibrary) {
+		if errors.Is(err, favorite.ErrMangaAlreadyInLibrary) {
 			c.JSON(http.StatusConflict, gin.H{
 				"error":   "manga already in library",
 				"message": "use update endpoint to change status",
@@ -612,7 +551,7 @@ func (h *MangaHandler) AddToLibrary(c *gin.Context) {
 		}
 
 		// Invalid status
-		if errors.Is(err, manga.ErrInvalidStatus) {
+		if errors.Is(err, favorite.ErrInvalidStatus) {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": "invalid status. valid values: plan_to_read, reading, completed, on_hold, dropped",
 			})
@@ -620,7 +559,7 @@ func (h *MangaHandler) AddToLibrary(c *gin.Context) {
 		}
 
 		// Manga not found
-		if errors.Is(err, manga.ErrMangaNotFound) {
+		if errors.Is(err, favorite.ErrMangaNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{
 				"error": "manga not found",
 			})
@@ -628,7 +567,7 @@ func (h *MangaHandler) AddToLibrary(c *gin.Context) {
 		}
 
 		// A2: Database error - System logs error and shows retry option
-		if errors.Is(err, manga.ErrDatabaseError) {
+		if errors.Is(err, favorite.ErrDatabaseError) {
 			log.Printf("Database error during add to library: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": "an error occurred while adding to library. please try again later",
@@ -655,39 +594,6 @@ func (h *MangaHandler) AddToLibrary(c *gin.Context) {
 // 4. System triggers TCP broadcast to connected clients
 // 5. System confirms update to user
 func (h *MangaHandler) UpdateProgress(c *gin.Context) {
-	// Get user ID from JWT token (required for this endpoint)
-	authHeader := c.GetHeader("Authorization")
-	if authHeader == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "authentication required",
-		})
-		return
-	}
-
-	// Extract token
-	tokenString := ""
-	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
-		tokenString = authHeader[7:]
-	} else {
-		tokenString = authHeader
-	}
-
-	// Validate token and get user ID
-	// Invalid tokens are rejected
-	// Expired tokens trigger reauthentication
-	claims, err := auth.ValidateToken(tokenString)
-	if err != nil {
-		// Handle different error types
-		if errors.Is(err, auth.ErrExpiredToken) {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":   "expired token",
-				"message": "your session has expired. please login again",
-				"code":    "TOKEN_EXPIRED",
-			})
-			return
-		}
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "invalid token",
 			"message": "authentication required",
 		})
 		return
@@ -713,7 +619,7 @@ func (h *MangaHandler) UpdateProgress(c *gin.Context) {
 	}
 
 	// Bind request body
-	var req manga.UpdateProgressRequest
+	var req history.UpdateProgressRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "invalid request body. current_chapter is required",
@@ -731,10 +637,10 @@ func (h *MangaHandler) UpdateProgress(c *gin.Context) {
 	}
 
 	// Update progress
-	response, err := h.service.UpdateProgress(c.Request.Context(), userID, mangaID, req)
+	response, err := h.historyService.UpdateProgress(c.Request.Context(), userID, mangaID, req)
 	if err != nil {
 		// A1: Invalid chapter number - System shows validation error
-		if errors.Is(err, manga.ErrInvalidChapterNumber) {
+		if errors.Is(err, history.ErrInvalidChapterNumber) {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": err.Error(),
 			})
@@ -742,7 +648,7 @@ func (h *MangaHandler) UpdateProgress(c *gin.Context) {
 		}
 
 		// Manga not found
-		if errors.Is(err, manga.ErrMangaNotFound) {
+		if errors.Is(err, history.ErrMangaNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{
 				"error": "manga not found",
 			})
@@ -750,7 +656,7 @@ func (h *MangaHandler) UpdateProgress(c *gin.Context) {
 		}
 
 		// Manga not in library
-		if errors.Is(err, manga.ErrMangaNotInLibrary) {
+		if errors.Is(err, history.ErrMangaNotInLibrary) {
 			c.JSON(http.StatusForbidden, gin.H{
 				"error": "manga not in library. add it to your library first",
 			})
@@ -758,7 +664,7 @@ func (h *MangaHandler) UpdateProgress(c *gin.Context) {
 		}
 
 		// Database error
-		if errors.Is(err, manga.ErrDatabaseError) {
+		if errors.Is(err, history.ErrDatabaseError) {
 			log.Printf("Database error during progress update: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": "an error occurred while updating progress. please try again later",
