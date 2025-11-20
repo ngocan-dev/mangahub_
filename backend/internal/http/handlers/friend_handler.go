@@ -31,6 +31,10 @@ func (h *FriendHandler) Search(c *gin.Context) {
 
 	result, err := h.service.SearchUser(c.Request.Context(), username)
 	if err != nil {
+		if errors.Is(err, friend.ErrInvalidUsername) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid username"})
+			return
+		}
 		if errors.Is(err, friend.ErrUserNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 			return
@@ -70,6 +74,9 @@ func (h *FriendHandler) SendRequest(c *gin.Context) {
 	friendship, err := h.service.SendFriendRequest(c.Request.Context(), userID, usernameString, req.Username)
 	if err != nil {
 		switch {
+		case errors.Is(err, friend.ErrInvalidUsername):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid username"})
+			return
 		case errors.Is(err, friend.ErrUserNotFound):
 			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		case errors.Is(err, friend.ErrCannotFriendSelf):
@@ -117,6 +124,9 @@ func (h *FriendHandler) AcceptRequest(c *gin.Context) {
 	friendship, err := h.service.AcceptFriendRequest(c.Request.Context(), userID, accepterUsernameStr, req.RequesterUsername)
 	if err != nil {
 		switch {
+		case errors.Is(err, friend.ErrInvalidUsername):
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid username"})
+			return
 		case errors.Is(err, friend.ErrUserNotFound):
 			c.JSON(http.StatusNotFound, gin.H{"error": "requester not found"})
 		case errors.Is(err, friend.ErrNoPendingRequest):
