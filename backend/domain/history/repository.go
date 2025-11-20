@@ -3,6 +3,7 @@ package history
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -390,8 +391,23 @@ func (r *Repository) CalculateReadingStatistics(ctx context.Context, userID int6
 
 // SaveReadingStatistics persists cached stats
 func (r *Repository) SaveReadingStatistics(ctx context.Context, stats *ReadingStatistics) error {
+	favoriteGenresJSON, err := json.Marshal(stats.FavoriteGenres)
+	if err != nil {
+		return err
+	}
+
+	monthlyStatsJSON, err := json.Marshal(stats.MonthlyStats)
+	if err != nil {
+		return err
+	}
+
+	yearlyStatsJSON, err := json.Marshal(stats.YearlyStats)
+	if err != nil {
+		return err
+	}
+
 	_, err := r.db.ExecContext(ctx, `
-        INSERT INTO Reading_Statistics_Cache (
+        INSERT INTO Reading_Statistics (
             User_Id, Total_Chapters_Read, Total_Manga_Read, Total_Manga_Reading,
             Total_Manga_Planned, Favorite_Genres, Average_Rating, Total_Reading_Time_Hours,
             Current_Streak_Days, Longest_Streak_Days, Monthly_Stats, Yearly_Stats,
@@ -416,13 +432,13 @@ func (r *Repository) SaveReadingStatistics(ctx context.Context, stats *ReadingSt
 		stats.TotalMangaRead,
 		stats.TotalMangaReading,
 		stats.TotalMangaPlanned,
-		stats.FavoriteGenres,
+		string(favoriteGenresJSON),
 		stats.AverageRating,
 		stats.TotalReadingTimeHours,
 		stats.CurrentStreakDays,
 		stats.LongestStreakDays,
-		stats.MonthlyStats,
-		stats.YearlyStats,
+		string(monthlyStatsJSON),
+		string(yearlyStatsJSON),
 		stats.LastCalculatedAt,
 	)
 	return err
@@ -436,18 +452,31 @@ func (r *Repository) GetCachedReadingStatistics(ctx context.Context, userID int6
             Total_Manga_Read,
             Total_Manga_Reading,
             Total_Manga_Planned,
+            Favorite_Genres,
             Average_Rating,
+            Total_Reading_Time_Hours,
+            Current_Streak_Days,
+            Longest_Streak_Days,
+            Monthly_Stats,
+            Yearly_Stats,
             Last_Calculated_At
-        FROM Reading_Statistics_Cache
+        FROM Reading_Statistics
         WHERE User_Id = ?
     `
 	var stats ReadingStatistics
+	var favoriteGenresJSON, monthlyStatsJSON, yearlyStatsJSON sql.NullString
 	err := r.db.QueryRowContext(ctx, query, userID).Scan(
 		&stats.TotalChaptersRead,
 		&stats.TotalMangaRead,
 		&stats.TotalMangaReading,
 		&stats.TotalMangaPlanned,
+		&favoriteGenresJSON,
 		&stats.AverageRating,
+		&stats.TotalReadingTimeHours,
+		&stats.CurrentStreakDays,
+		&stats.LongestStreakDays,
+		&monthlyStatsJSON,
+		&yearlyStatsJSON,
 		&stats.LastCalculatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -457,6 +486,17 @@ func (r *Repository) GetCachedReadingStatistics(ctx context.Context, userID int6
 		return nil, err
 	}
 	stats.UserID = userID
+
+	if favoriteGenresJSON.Valid {
+		_ = json.Unmarshal([]byte(favoriteGenresJSON.String), &stats.FavoriteGenres)
+	}
+	if monthlyStatsJSON.Valid {
+		_ = json.Unmarshal([]byte(monthlyStatsJSON.String), &stats.MonthlyStats)
+	}
+	if yearlyStatsJSON.Valid {
+		_ = json.Unmarshal([]byte(yearlyStatsJSON.String), &stats.YearlyStats)
+	}
+
 	return &stats, nil
 }
 
