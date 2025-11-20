@@ -3,7 +3,7 @@ package manga
 import (
 	"context"
 
-	domain "github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/manga"
+	domain "github.com/ngocan-dev/mangahub/manga-backend/domain/manga"
 )
 
 // Search exposes search capability

@@ -10,11 +10,11 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "modernc.org/sqlite" // Dùng driver giống migration
 
-	dbhealth "github.com/ngocan-dev/mangahub_/backend/cmd/db"
-	"github.com/ngocan-dev/mangahub_/backend/cmd/http/handlers"
-	"github.com/ngocan-dev/mangahub_/backend/cmd/middleware"
-	"github.com/ngocan-dev/mangahub_/backend/cmd/queue"
-	"github.com/ngocan-dev/mangahub_/backend/internal/cache"
+	dbhealth "github.com/ngocan-dev/mangahub/manga-backend/db"
+	"github.com/ngocan-dev/mangahub/manga-backend/internal/cache"
+	"github.com/ngocan-dev/mangahub/manga-backend/internal/http/handlers"
+	"github.com/ngocan-dev/mangahub/manga-backend/internal/middleware"
+	"github.com/ngocan-dev/mangahub/manga-backend/internal/queue"
 )
 
 // user handler tối giản

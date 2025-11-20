@@ -7,10 +7,10 @@ import (
 	"log"
 	"time"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/comment"
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/history"
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/library"
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/manga"
+	"github.com/ngocan-dev/mangahub/manga-backend/domain/comment"
+	"github.com/ngocan-dev/mangahub/manga-backend/domain/history"
+	"github.com/ngocan-dev/mangahub/manga-backend/domain/library"
+	"github.com/ngocan-dev/mangahub/manga-backend/domain/manga"
 	chapterrepository "github.com/ngocan-dev/mangahub/manga-backend/internal/repository/chapter"
 	chapterservice "github.com/ngocan-dev/mangahub/manga-backend/internal/service/chapter"
 )

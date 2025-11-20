@@ -1,26 +1,27 @@
 package handlers
 
 import (
-        "database/sql"
-        "errors"
-        "fmt"
-        "log"
-        "net/http"
-        "strconv"
+	"database/sql"
+	"errors"
+	"fmt"
+	"log"
+	"net/http"
+	"strconv"
+	"strings"
 
-        "github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin"
 
-        "github.com/ngocan-dev/mangahub/manga-backend/cmd/auth"
-        "github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/comment"
-        "github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/favorite"
-        "github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/history"
-    "github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/library"
-        "github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/manga"
-    "github.com/ngocan-dev/mangahub/manga-backend/cmd/security"
-    chapterrepository "github.com/ngocan-dev/mangahub/manga-backend/internal/repository/chapter"
-    chapterservice "github.com/ngocan-dev/mangahub/manga-backend/internal/service/chapter"
-    libraryrepository "github.com/ngocan-dev/mangahub/manga-backend/internal/repository/library"
-    libraryservice "github.com/ngocan-dev/mangahub/manga-backend/internal/service/library"
+	"github.com/ngocan-dev/mangahub/manga-backend/domain/comment"
+	"github.com/ngocan-dev/mangahub/manga-backend/domain/favorite"
+	"github.com/ngocan-dev/mangahub/manga-backend/domain/history"
+	"github.com/ngocan-dev/mangahub/manga-backend/domain/library"
+	"github.com/ngocan-dev/mangahub/manga-backend/domain/manga"
+	"github.com/ngocan-dev/mangahub/manga-backend/internal/auth"
+	chapterrepository "github.com/ngocan-dev/mangahub/manga-backend/internal/repository/chapter"
+	libraryrepository "github.com/ngocan-dev/mangahub/manga-backend/internal/repository/library"
+	"github.com/ngocan-dev/mangahub/manga-backend/internal/security"
+	chapterservice "github.com/ngocan-dev/mangahub/manga-backend/internal/service/chapter"
+	libraryservice "github.com/ngocan-dev/mangahub/manga-backend/internal/service/library"
 )
 
 type MangaHandler struct {
@@ -42,17 +43,17 @@ func NewMangaHandlerWithService(db *sql.DB, service *manga.Service) *MangaHandle
 }
 
 func buildMangaHandler(conn *sql.DB, mangaService *manga.Service) *MangaHandler {
-    chapterRepo := chapterrepository.NewRepository(conn)
-    chapterService := chapterservice.NewService(chapterRepo)
+	chapterRepo := chapterrepository.NewRepository(conn)
+	chapterService := chapterservice.NewService(chapterRepo)
 	mangaService.SetChapterService(chapterService)
 
-    libraryRepo := libraryrepository.NewRepository(conn)
+	libraryRepo := libraryrepository.NewRepository(conn)
 	historyRepo := history.NewRepository(conn)
 	favoriteRepo := favorite.NewRepository(conn)
 	commentRepo := comment.NewRepository(conn)
 
 	historyService := history.NewService(historyRepo, chapterService, libraryRepo, mangaService)
-    libraryService := libraryservice.NewService(libraryRepo, mangaService, historyService)
+	libraryService := libraryservice.NewService(libraryRepo, mangaService, historyService)
 	favoriteService := favorite.NewService(favoriteRepo, libraryService)
 	commentService := comment.NewService(commentRepo, mangaService, historyService)
 
@@ -453,6 +454,41 @@ func getMangaIDFromParam(c *gin.Context) (int64, error) {
 	}
 	return id, nil
 }
+
+func getAuthClaims(c *gin.Context) (*auth.Claims, bool) {
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":   "authorization header required",
+			"message": "authentication required",
+		})
+		return nil, false
+	}
+
+	tokenString := strings.TrimSpace(authHeader)
+	if strings.HasPrefix(tokenString, "Bearer ") {
+		tokenString = strings.TrimSpace(tokenString[7:])
+	}
+
+	if tokenString == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":   "authorization header required",
+			"message": "authentication required",
+		})
+		return nil, false
+	}
+
+	claims, err := auth.ValidateToken(tokenString)
+	if err != nil || claims == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":   "invalid token",
+			"message": "token validation failed",
+		})
+		return nil, false
+	}
+
+	return claims, true
+}
 func (h *MangaHandler) GetDetails(c *gin.Context) {
 	// Try to get user ID from JWT token (optional - endpoint works without auth)
 	var userID *int64
@@ -505,17 +541,11 @@ func (h *MangaHandler) GetDetails(c *gin.Context) {
 }
 
 func (h *MangaHandler) AddToLibrary(c *gin.Context) {
-			"message": "authentication required",
-		})
+	claims, ok := getAuthClaims(c)
+	if !ok {
 		return
 	}
-	if claims == nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "invalid token",
-			"message": "token validation failed",
-		})
-		return
-	}
+
 	userID := claims.UserID
 
 	// Get manga ID from URL parameter
@@ -529,29 +559,29 @@ func (h *MangaHandler) AddToLibrary(c *gin.Context) {
 		return
 	}
 
-        // Bind request body
-        var req library.AddToLibraryRequest
-        if err := c.ShouldBindJSON(&req); err != nil {
-                c.JSON(http.StatusBadRequest, gin.H{
-                        "error": "invalid request body. status is required",
-                })
-                return
-        }
+	// Bind request body
+	var req library.AddToLibraryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "invalid request body. status is required",
+		})
+		return
+	}
 
-        // Validate status input
-        // SQL injection attempts are blocked
-        if err := security.DetectSQLInjection(req.Status); err != nil {
-                c.JSON(http.StatusBadRequest, gin.H{
-                        "error": "invalid status format",
-                })
-                return
-        }
+	// Validate status input
+	// SQL injection attempts are blocked
+	if err := security.DetectSQLInjection(req.Status); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "invalid status format",
+		})
+		return
+	}
 
-        // Add to library
-        response, err := h.libraryService.AddToLibrary(c.Request.Context(), userID, mangaID, req)
-        if err != nil {
-                // A1: Manga already in library - System offers to update status
-                if errors.Is(err, library.ErrMangaAlreadyInLibrary) {
+	// Add to library
+	response, err := h.libraryService.AddToLibrary(c.Request.Context(), userID, mangaID, req)
+	if err != nil {
+		// A1: Manga already in library - System offers to update status
+		if errors.Is(err, library.ErrMangaAlreadyInLibrary) {
 			c.JSON(http.StatusConflict, gin.H{
 				"error":   "manga already in library",
 				"message": "use update endpoint to change status",
@@ -559,24 +589,24 @@ func (h *MangaHandler) AddToLibrary(c *gin.Context) {
 			return
 		}
 
-                // Invalid status
-                if errors.Is(err, library.ErrInvalidStatus) {
+		// Invalid status
+		if errors.Is(err, library.ErrInvalidStatus) {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": "invalid status. valid values: plan_to_read, reading, completed, on_hold, dropped",
 			})
 			return
 		}
 
-                // Manga not found
-                if errors.Is(err, library.ErrMangaNotFound) {
+		// Manga not found
+		if errors.Is(err, library.ErrMangaNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{
 				"error": "manga not found",
 			})
 			return
 		}
 
-                // A2: Database error - System logs error and shows retry option
-                if errors.Is(err, library.ErrDatabaseError) {
+		// A2: Database error - System logs error and shows retry option
+		if errors.Is(err, library.ErrDatabaseError) {
 			log.Printf("Database error during add to library: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": "an error occurred while adding to library. please try again later",
@@ -603,17 +633,11 @@ func (h *MangaHandler) AddToLibrary(c *gin.Context) {
 // 4. System triggers TCP broadcast to connected clients
 // 5. System confirms update to user
 func (h *MangaHandler) UpdateProgress(c *gin.Context) {
-			"message": "authentication required",
-		})
+	claims, ok := getAuthClaims(c)
+	if !ok {
 		return
 	}
-	if claims == nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "invalid token",
-			"message": "token validation failed",
-		})
-		return
-	}
+
 	userID := claims.UserID
 
 	// Get manga ID from URL parameter
@@ -681,14 +705,14 @@ func (h *MangaHandler) UpdateProgress(c *gin.Context) {
 			return
 		}
 
-                // Check for wrapped errors (invalid chapter wrapped in fmt.Errorf)
-                errStr := err.Error()
-                if errStr != "" && errors.Is(err, history.ErrInvalidChapterNumber) {
-                        c.JSON(http.StatusBadRequest, gin.H{
-                                "error": errStr,
-                        })
-                        return
-                }
+		// Check for wrapped errors (invalid chapter wrapped in fmt.Errorf)
+		errStr := err.Error()
+		if errStr != "" && errors.Is(err, history.ErrInvalidChapterNumber) {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": errStr,
+			})
+			return
+		}
 
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "internal server error",

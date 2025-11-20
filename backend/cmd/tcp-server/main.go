@@ -11,7 +11,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/tcp"
+	"github.com/ngocan-dev/mangahub/manga-backend/internal/tcp"
 )
 
 func main() {
