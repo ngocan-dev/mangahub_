@@ -82,6 +82,9 @@ func (r *Repository) Search(ctx context.Context, req SearchRequest) ([]Manga, in
 		query += " WHERE " + strings.Join(conditions, " AND ")
 	}
 
+	countArgs := make([]interface{}, len(args))
+	copy(countArgs, args)
+
 	// --- Sorting ---
 	switch req.SortBy {
 	case "rating":
@@ -104,13 +107,6 @@ func (r *Repository) Search(ctx context.Context, req SearchRequest) ([]Manga, in
 	if page <= 0 {
 		page = 1
 	}
-	offset := (page - 1) * limit
-
-	page := req.Page
-	if page <= 0 {
-		page = 1
-	}
-
 	offset := (page - 1) * limit
 
 	query += " LIMIT ? OFFSET ?"
@@ -139,6 +135,7 @@ func (r *Repository) Search(ctx context.Context, req SearchRequest) ([]Manga, in
 		); err != nil {
 			return nil, 0, err
 		}
+		results = append(results, m)
 	}
 
 	if err := rows.Err(); err != nil {
@@ -150,9 +147,6 @@ func (r *Repository) Search(ctx context.Context, req SearchRequest) ([]Manga, in
 	if len(conditions) > 0 {
 		countQuery += " WHERE " + strings.Join(conditions, " AND ")
 	}
-
-	// countArgs = all args except LIMIT/OFFSET
-	countArgs := args[:len(args)-2]
 
 	var total int
 	if err := r.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
