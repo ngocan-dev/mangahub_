@@ -110,6 +110,11 @@ func (h *MangaHandler) Search(c *gin.Context) {
 		req.Genres = genres
 	}
 
+	// Default to relevance sorting when a text query is provided
+	if strings.TrimSpace(req.Query) != "" && req.SortBy == "" {
+		req.SortBy = "relevance"
+	}
+
 	// Perform search
 	response, err := h.mangaService.Search(c.Request.Context(), req)
 	if err != nil {
@@ -140,95 +145,8 @@ func (h *MangaHandler) Search(c *gin.Context) {
 		})
 		return
 	}
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "authentication required",
-		})
-		return
-	}
 
-	userID, ok := userIDInterface.(int64)
-	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "invalid user context",
-		})
-		return
-	}
-
-	// Get manga ID from URL
-	mangaID, err := getMangaIDFromParam(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "invalid manga id",
-		})
-		return
-	}
-
-	// Bind request body
-	var req comment.CreateReviewRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid request body",
-			"details": err.Error(),
-		})
-		return
-	}
-
-	// Create review
-	response, err := h.commentService.CreateReview(c.Request.Context(), userID, mangaID, req)
-	if err != nil {
-		if errors.Is(err, comment.ErrMangaNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": "manga not found",
-			})
-			return
-		}
-		if errors.Is(err, comment.ErrMangaNotCompleted) {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "manga must be in your completed list to write a review",
-			})
-			return
-		}
-		if errors.Is(err, comment.ErrReviewAlreadyExists) {
-			c.JSON(http.StatusConflict, gin.H{
-				"error": "you have already written a review for this manga",
-			})
-			return
-		}
-		if errors.Is(err, comment.ErrInvalidReviewRating) {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "rating must be between 1 and 10",
-			})
-			return
-		}
-		if errors.Is(err, comment.ErrReviewContentTooShort) {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "review content must be at least 10 characters",
-			})
-			return
-		}
-		if errors.Is(err, comment.ErrReviewContentTooLong) {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "review content must not exceed 5000 characters",
-			})
-			return
-		}
-		if errors.Is(err, comment.ErrDatabaseError) {
-			log.Printf("Database error during review creation: %v", err)
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "an error occurred while creating review. please try again later",
-			})
-			return
-		}
-
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "internal server error",
-		})
-		return
-	}
-
-	// Step 5: Return created review
-	c.JSON(http.StatusCreated, response)
+	c.JSON(http.StatusOK, response)
 }
 
 // GetReviews handles review retrieval requests
@@ -239,6 +157,7 @@ func (h *MangaHandler) Search(c *gin.Context) {
 // 4. System displays reviews sorted by helpfulness or date
 // 5. User can read individual reviews and ratings
 func (h *MangaHandler) GetReviews(c *gin.Context) {
+	mangaID, err := getMangaIDFromParam(c)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "invalid manga id",
@@ -292,6 +211,14 @@ func (h *MangaHandler) GetReviews(c *gin.Context) {
 // 5. User can click through to view details
 func (h *MangaHandler) GetFriendsActivityFeed(c *gin.Context) {
 	// Get user ID from context (set by auth middleware)
+	userIDInterface, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "authentication required",
+		})
+		return
+	}
+
 	userID, ok := userIDInterface.(int64)
 	if !ok {
 		c.JSON(http.StatusUnauthorized, gin.H{
