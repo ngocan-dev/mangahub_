@@ -164,8 +164,8 @@ func main() {
 	// Route: Add Manga to Library
 	r.POST("/manga/:id/library", mangaHandler.AddToLibrary)
 
-	// Route: Update Reading Progress
-	r.PUT("/manga/:id/progress", mangaHandler.UpdateProgress)
+	// Route: Update Reading Progress (requires authentication)
+	r.PUT("/manga/:id/progress", authHandler.RequireAuth, mangaHandler.UpdateProgress)
 
 	// Route: Create Review (requires authentication)
 	r.POST("/manga/:id/reviews", authHandler.RequireAuth, mangaHandler.CreateReview)
