@@ -17,6 +17,9 @@ type Manga struct {
 	Description string  `json:"description"`
 	Image       string  `json:"image"`
 	RatingPoint float64 `json:"rating_point"`
+	// RelevanceScore represents the ranking score returned by full-text search.
+	// It is omitted when not performing text search.
+	RelevanceScore float64 `json:"relevance_score,omitempty"`
 }
 
 // SearchRequest represents search criteria

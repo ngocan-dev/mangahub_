@@ -18,68 +18,100 @@ func NewRepository(db *sql.DB) *Repository {
 
 // Search searches for manga/novels based on criteria
 func (r *Repository) Search(ctx context.Context, req SearchRequest) ([]Manga, int, error) {
-	baseQuery := `
-        SELECT
-            Novel_Id,
-            Novel_Name,
-            Title,
-            Author,
-            Genre,
-            Status,
-            Description,
-            Image,
-            Rating_Point
-        FROM Novels
-    `
-
 	var (
 		conditions []string
 		args       []interface{}
 	)
 
-	// --- Filters ---
-	if req.Query != "" {
-		like := "%" + req.Query + "%"
-		conditions = append(conditions, "(Novel_Name LIKE ? OR Title LIKE ? OR Author LIKE ? OR Description LIKE ?)")
-		args = append(args, like, like, like, like)
+	useFullText := strings.TrimSpace(req.Query) != ""
+	ftsQuery := buildFTSQuery(req.Query)
+
+	if useFullText {
+		args = append(args, ftsQuery)
 	}
 
+	// --- Filters ---
 	if len(req.Genres) > 0 {
 		placeholders := make([]string, len(req.Genres))
 		for i, g := range req.Genres {
 			placeholders[i] = "?"
 			args = append(args, g)
 		}
-		conditions = append(conditions, "Genre IN ("+strings.Join(placeholders, ",")+")")
+		conditions = append(conditions, "n.Genre IN ("+strings.Join(placeholders, ",")+")")
 	}
 
 	if req.Status != "" {
-		conditions = append(conditions, "Status = ?")
+		conditions = append(conditions, "n.Status = ?")
 		args = append(args, req.Status)
 	}
 
 	if req.MinRating != nil {
-		conditions = append(conditions, "Rating_Point >= ?")
+		conditions = append(conditions, "n.Rating_Point >= ?")
 		args = append(args, *req.MinRating)
 	}
 	if req.MaxRating != nil {
-		conditions = append(conditions, "Rating_Point <= ?")
+		conditions = append(conditions, "n.Rating_Point <= ?")
 		args = append(args, *req.MaxRating)
 	}
 
 	if req.YearFrom != nil {
-		conditions = append(conditions, "Year >= ?")
+		conditions = append(conditions, "n.Year >= ?")
 		args = append(args, *req.YearFrom)
 	}
 	if req.YearTo != nil {
-		conditions = append(conditions, "Year <= ?")
+		conditions = append(conditions, "n.Year <= ?")
 		args = append(args, *req.YearTo)
 	}
 
+	// --- Base query and relevance ranking ---
+	baseQuery := `
+        SELECT
+            n.Novel_Id,
+            n.Novel_Name,
+            n.Title,
+            n.Author,
+            n.Genre,
+            n.Status,
+            n.Description,
+            n.Image,
+            n.Rating_Point,
+            COALESCE(r.rank, 0) AS relevance
+        FROM Novels n
+    `
+
+	countQuery := "SELECT COUNT(*) FROM Novels n"
+	if useFullText {
+		rankedCTE := `WITH ranked AS (
+        SELECT rowid AS Novel_Id, bm25(NovelSearch, 1.0, 0.75) AS rank
+        FROM NovelSearch
+        WHERE NovelSearch MATCH ?
+    )`
+		baseQuery = rankedCTE + `
+        SELECT
+            n.Novel_Id,
+            n.Novel_Name,
+            n.Title,
+            n.Author,
+            n.Genre,
+            n.Status,
+            n.Description,
+            n.Image,
+            n.Rating_Point,
+            r.rank AS relevance
+        FROM Novels n
+        JOIN ranked r ON n.Novel_Id = r.Novel_Id
+    `
+		countQuery = rankedCTE + `
+        SELECT COUNT(*) FROM Novels n
+        JOIN ranked r ON n.Novel_Id = r.Novel_Id
+    `
+	}
+
 	// --- Build WHERE ---
-	query := baseQuery
 	if len(conditions) > 0 {
-		query += " WHERE " + strings.Join(conditions, " AND ")
+		whereClause := " WHERE " + strings.Join(conditions, " AND ")
+		baseQuery += whereClause
+		countQuery += whereClause
 	}
 
 	countArgs := make([]interface{}, len(args))
@@ -88,11 +120,17 @@ func (r *Repository) Search(ctx context.Context, req SearchRequest) ([]Manga, in
 	// --- Sorting ---
 	switch req.SortBy {
 	case "rating":
-		query += " ORDER BY Rating_Point DESC"
+		baseQuery += " ORDER BY n.Rating_Point DESC"
 	case "date_updated":
-		query += " ORDER BY Date_Updated DESC"
+		baseQuery += " ORDER BY n.Date_Updated DESC"
+	case "relevance":
+		baseQuery += " ORDER BY relevance ASC, n.Rating_Point DESC"
 	default:
-		query += " ORDER BY Rating_Point DESC"
+		if useFullText {
+			baseQuery += " ORDER BY relevance ASC, n.Rating_Point DESC"
+		} else {
+			baseQuery += " ORDER BY n.Rating_Point DESC"
+		}
 	}
 
 	// --- Pagination ---
@@ -109,11 +147,11 @@ func (r *Repository) Search(ctx context.Context, req SearchRequest) ([]Manga, in
 	}
 	offset := (page - 1) * limit
 
-	query += " LIMIT ? OFFSET ?"
+	baseQuery += " LIMIT ? OFFSET ?"
 	args = append(args, limit, offset)
 
 	// --- Execute Search Query ---
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	rows, err := r.db.QueryContext(ctx, baseQuery, args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -132,6 +170,7 @@ func (r *Repository) Search(ctx context.Context, req SearchRequest) ([]Manga, in
 			&m.Description,
 			&m.Image,
 			&m.RatingPoint,
+			&m.RelevanceScore,
 		); err != nil {
 			return nil, 0, err
 		}
@@ -143,17 +182,26 @@ func (r *Repository) Search(ctx context.Context, req SearchRequest) ([]Manga, in
 	}
 
 	// --- Count Query ---
-	countQuery := "SELECT COUNT(*) FROM Novels"
-	if len(conditions) > 0 {
-		countQuery += " WHERE " + strings.Join(conditions, " AND ")
-	}
-
 	var total int
 	if err := r.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
 	return results, total, nil
+}
+
+func buildFTSQuery(query string) string {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return ""
+	}
+
+	parts := strings.Fields(query)
+	for i, part := range parts {
+		parts[i] = part + "*"
+	}
+
+	return strings.Join(parts, " ")
 }
 
 // GetByID retrieves manga details by ID
