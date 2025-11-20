@@ -16,6 +16,7 @@ import (
 	"github.com/ngocan-dev/mangahub/manga-backend/internal/middleware"
 	"github.com/ngocan-dev/mangahub/manga-backend/internal/queue"
 	"github.com/ngocan-dev/mangahub/manga-backend/internal/tcp"
+	"github.com/ngocan-dev/mangahub/manga-backend/internal/udp"
 )
 
 // user handler tối giản
@@ -146,11 +147,31 @@ func main() {
 	mangaHandler := handlers.NewMangaHandlerWithService(db, mangaService)
 	mangaHandler.SetBroadcaster(broadcaster)
 
-	// Initialize UDP notifier (optional - can be nil if UDP server not running)
-	// In production, you would start the UDP server separately or pass the server instance
+	// Initialize UDP server for chapter release notifications
+	udpAddress := os.Getenv("UDP_SERVER_ADDR")
+	if udpAddress == "" {
+		udpAddress = ":9091"
+	}
+	udpServerEnabled := os.Getenv("UDP_SERVER_DISABLED") == ""
+
 	var notificationHandler *handlers.NotificationHandler
-	// For now, we'll create it with nil notifier - can be set later if UDP server is available
-	notificationHandler = handlers.NewNotificationHandler(db, nil)
+	if udpServerEnabled {
+		udpServer := udp.NewServer(udpAddress, db)
+		udpCtx, udpCancel := context.WithCancel(context.Background())
+		defer udpCancel()
+		go func() {
+			log.Printf("Starting UDP notification server on %s", udpAddress)
+			if err := udpServer.Start(udpCtx); err != nil {
+				log.Printf("UDP server stopped: %v", err)
+			}
+		}()
+
+		notifier := udp.NewNotifier(udpServer)
+		notificationHandler = handlers.NewNotificationHandler(db, notifier)
+	} else {
+		log.Println("UDP notification server disabled; chapter notifications will be unavailable")
+		notificationHandler = handlers.NewNotificationHandler(db, nil)
+	}
 
 	// Initialize rate limiter for handling 50-100 concurrent users
 	// API response times remain under 500ms
