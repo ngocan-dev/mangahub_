@@ -9,11 +9,11 @@ import (
 	"os/signal"
 	"syscall"
 
-	"google.golang.org/grpc"
+	grpc "google.golang.org/grpc"
 
 	_ "modernc.org/sqlite"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/grpc"
+	grpcserver "github.com/ngocan-dev/mangahub/manga-backend/internal/grpc"
 	pb "github.com/ngocan-dev/mangahub/manga-backend/proto/manga"
 )
 
@@ -38,7 +38,7 @@ func main() {
 	grpcServer := grpc.NewServer()
 
 	// Register manga service
-	mangaServer := grpc.NewServer(db)
+	mangaServer := grpcserver.NewServer(db)
 	pb.RegisterMangaServiceServer(grpcServer, mangaServer)
 
 	// Create listener
