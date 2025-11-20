@@ -149,6 +149,39 @@ func (h *MangaHandler) Search(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+// GetPopularManga returns cached/popular manga lists
+// Main Success Scenario:
+// 1. System identifies frequently requested manga
+// 2. System stores manga details in Redis cache
+// 3. System sets appropriate cache expiration times
+// 4. Subsequent requests serve data from cache
+// 5. System updates cache when data changes
+func (h *MangaHandler) GetPopularManga(c *gin.Context) {
+	limit := 10
+	if l := c.Query("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil {
+			limit = parsed
+		}
+	}
+
+	popular, err := h.mangaService.GetPopularManga(c.Request.Context(), limit)
+	if err != nil {
+		if errors.Is(err, manga.ErrDatabaseError) {
+			log.Printf("Database error retrieving popular manga: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to load popular manga"})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"results": popular,
+		"limit":   limit,
+	})
+}
+
 // GetReviews handles review retrieval requests
 // Main Success Scenario:
 // 1. User views manga details page

@@ -39,6 +39,8 @@ type MangaCacher interface {
 	InvalidateMangaDetail(ctx context.Context, mangaID int64) error
 	GetSearchResults(ctx context.Context, cacheKey string) (*SearchResponse, error)
 	SetSearchResults(ctx context.Context, cacheKey string, response *SearchResponse) error
+	GetPopularManga(ctx context.Context, limit int) ([]Manga, error)
+	SetPopularManga(ctx context.Context, limit int, popular []Manga) error
 }
 
 // DBHealthChecker exposes database status
@@ -139,6 +141,35 @@ func GenerateSearchCacheKey(req SearchRequest) string {
 	}
 	key += fmt.Sprintf(":page:%d:limit:%d:sort:%s", req.Page, req.Limit, req.SortBy)
 	return key
+}
+
+// GetPopularManga returns the top-rated manga list with caching support
+// Step 1: System identifies frequently requested manga
+// Step 4: Subsequent requests serve data from cache
+func (s *Service) GetPopularManga(ctx context.Context, limit int) ([]Manga, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	if s.cache != nil {
+		if cached, err := s.cache.GetPopularManga(ctx, limit); err == nil && cached != nil {
+			return cached, nil
+		}
+	}
+
+	popular, err := s.repo.GetPopularManga(ctx, limit)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
+	}
+
+	if s.cache != nil {
+		_ = s.cache.SetPopularManga(ctx, limit, popular)
+	}
+
+	return popular, nil
 }
 
 // GetByID retrieves a manga entity
