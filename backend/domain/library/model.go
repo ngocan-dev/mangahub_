@@ -3,7 +3,7 @@ package library
 import (
 	"time"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/history"
+	"github.com/ngocan-dev/mangahub/manga-backend/domain/history"
 )
 
 // LibraryStatus describes how a manga appears in user's library without rating/favorite metadata

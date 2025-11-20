@@ -12,7 +12,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/websocket"
+	"github.com/ngocan-dev/mangahub/manga-backend/internal/websocket"
 )
 
 func main() {
