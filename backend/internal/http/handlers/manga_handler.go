@@ -17,6 +17,7 @@ import (
 	"github.com/ngocan-dev/mangahub/manga-backend/domain/library"
 	"github.com/ngocan-dev/mangahub/manga-backend/domain/manga"
 	"github.com/ngocan-dev/mangahub/manga-backend/internal/auth"
+	"github.com/ngocan-dev/mangahub/manga-backend/internal/queue"
 	chapterrepository "github.com/ngocan-dev/mangahub/manga-backend/internal/repository/chapter"
 	libraryrepository "github.com/ngocan-dev/mangahub/manga-backend/internal/repository/library"
 	"github.com/ngocan-dev/mangahub/manga-backend/internal/security"
@@ -30,6 +31,8 @@ type MangaHandler struct {
 	favoriteService *favorite.Service
 	historyService  *history.Service
 	commentService  *comment.Service
+	dbHealth        manga.DBHealthChecker
+	writeQueue      *queue.WriteQueue
 }
 
 // SetBroadcaster wires an optional progress broadcaster into the history service
@@ -37,6 +40,16 @@ func (h *MangaHandler) SetBroadcaster(b history.Broadcaster) {
 	if h != nil && h.historyService != nil {
 		h.historyService.SetBroadcaster(b)
 	}
+}
+
+// SetDBHealth wires a database health checker for resilience handling
+func (h *MangaHandler) SetDBHealth(checker manga.DBHealthChecker) {
+	h.dbHealth = checker
+}
+
+// SetWriteQueue injects the write queue used when the database is unavailable
+func (h *MangaHandler) SetWriteQueue(queue *queue.WriteQueue) {
+	h.writeQueue = queue
 }
 
 func NewMangaHandler(db *sql.DB, mangaCache interface{}) *MangaHandler {
@@ -118,6 +131,12 @@ func (h *MangaHandler) Search(c *gin.Context) {
 	// Perform search
 	response, err := h.mangaService.Search(c.Request.Context(), req)
 	if err != nil {
+		if errors.Is(err, manga.ErrDatabaseUnavailable) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"error": "database unavailable. showing cached results only",
+			})
+			return
+		}
 		// A2: Database error - System logs error and returns generic message
 		if errors.Is(err, manga.ErrDatabaseError) {
 			log.Printf("Database error during search: %v", err)
@@ -166,6 +185,10 @@ func (h *MangaHandler) GetPopularManga(c *gin.Context) {
 
 	popular, err := h.mangaService.GetPopularManga(c.Request.Context(), limit)
 	if err != nil {
+		if errors.Is(err, manga.ErrDatabaseUnavailable) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable. showing cached results only"})
+			return
+		}
 		if errors.Is(err, manga.ErrDatabaseError) {
 			log.Printf("Database error retrieving popular manga: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to load popular manga"})
@@ -275,8 +298,25 @@ func (h *MangaHandler) CreateReview(c *gin.Context) {
 		return
 	}
 
+	if h.dbHealth != nil && !h.dbHealth.IsHealthy() {
+		if h.writeQueue == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable. write queue not configured"})
+			return
+		}
+		_ = h.writeQueue.Enqueue("create_review", userID, mangaID, map[string]interface{}{
+			"rating":  req.Rating,
+			"content": req.Content,
+		})
+		c.JSON(http.StatusAccepted, gin.H{"message": "database unavailable. review queued for processing"})
+		return
+	}
+
 	response, err := h.commentService.CreateReview(c.Request.Context(), userID, mangaID, req)
 	if err != nil {
+		if errors.Is(err, manga.ErrDatabaseUnavailable) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable and review will be retried later"})
+			return
+		}
 		switch {
 		case errors.Is(err, comment.ErrMangaNotFound):
 			c.JSON(http.StatusNotFound, gin.H{"error": "manga not found"})
@@ -560,6 +600,12 @@ func (h *MangaHandler) GetDetails(c *gin.Context) {
 	// Get manga details
 	detail, err := h.mangaService.GetDetails(c.Request.Context(), mangaID, userID)
 	if err != nil {
+		if errors.Is(err, manga.ErrDatabaseUnavailable) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"error": "database unavailable and no cached data available",
+			})
+			return
+		}
 		if errors.Is(err, manga.ErrMangaNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{
 				"error": "manga not found",
@@ -659,6 +705,19 @@ func (h *MangaHandler) AddToLibrary(c *gin.Context) {
 	}
 
 	// Add to library
+	if h.dbHealth != nil && !h.dbHealth.IsHealthy() {
+		if h.writeQueue == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable. write queue not configured"})
+			return
+		}
+		_ = h.writeQueue.Enqueue("add_to_library", userID, mangaID, map[string]interface{}{
+			"status":          req.Status,
+			"current_chapter": req.CurrentChapter,
+		})
+		c.JSON(http.StatusAccepted, gin.H{"message": "database unavailable. request queued for processing"})
+		return
+	}
+
 	response, err := h.libraryService.AddToLibrary(c.Request.Context(), userID, mangaID, req)
 	if err != nil {
 		// A1: Manga already in library - System offers to update status
@@ -751,8 +810,24 @@ func (h *MangaHandler) UpdateProgress(c *gin.Context) {
 	}
 
 	// Update progress
+	if h.dbHealth != nil && !h.dbHealth.IsHealthy() {
+		if h.writeQueue == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable. write queue not configured"})
+			return
+		}
+		_ = h.writeQueue.Enqueue("update_progress", userID, mangaID, map[string]interface{}{
+			"current_chapter": req.CurrentChapter,
+		})
+		c.JSON(http.StatusAccepted, gin.H{"message": "database unavailable. progress update queued"})
+		return
+	}
+
 	response, err := h.historyService.UpdateProgress(c.Request.Context(), userID, mangaID, req)
 	if err != nil {
+		if errors.Is(err, manga.ErrDatabaseUnavailable) {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "database unavailable. progress update queued"})
+			return
+		}
 		// A1: Invalid chapter number - System shows validation error
 		if errors.Is(err, history.ErrInvalidChapterNumber) {
 			c.JSON(http.StatusBadRequest, gin.H{

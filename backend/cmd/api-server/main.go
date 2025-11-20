@@ -147,6 +147,8 @@ func main() {
 
 	mangaHandler := handlers.NewMangaHandlerWithService(db, mangaService)
 	mangaHandler.SetBroadcaster(broadcaster)
+	mangaHandler.SetDBHealth(healthMonitor)
+	mangaHandler.SetWriteQueue(writeQueue)
 
 	friendRepo := friend.NewRepository(db)
 	friendService := friend.NewService(friendRepo, nil)

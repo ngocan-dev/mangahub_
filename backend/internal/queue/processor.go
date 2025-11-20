@@ -209,6 +209,10 @@ func (p *WriteProcessor) StartProcessing(ctx context.Context, interval time.Dura
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			if p.mangaService != nil && !p.mangaService.IsDBHealthy() {
+				log.Printf("Skipping queued writes: database unavailable")
+				continue
+			}
 			if !p.queue.IsEmpty() {
 				// Use our processor function
 				processed, failed := p.ProcessAllNow(ctx)
@@ -222,6 +226,10 @@ func (p *WriteProcessor) StartProcessing(ctx context.Context, interval time.Dura
 
 // ProcessAllNow processes all queued operations immediately
 func (p *WriteProcessor) ProcessAllNow(ctx context.Context) (processed, failed int) {
+	if p.mangaService != nil && !p.mangaService.IsDBHealthy() {
+		log.Printf("Skipping immediate processing: database unavailable")
+		return 0, 0
+	}
 	// Update process function
 	originalProcessFunc := p.queue.processFunc
 	p.queue.processFunc = p.ProcessOperation
