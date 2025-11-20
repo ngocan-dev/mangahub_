@@ -20,14 +20,16 @@ type WriteProcessor struct {
 	queue        *WriteQueue
 	mangaService *manga.Service
 	db           *sql.DB
+	broadcaster  history.Broadcaster
 }
 
 // NewWriteProcessor creates a new write processor
-func NewWriteProcessor(queue *WriteQueue, mangaService *manga.Service, db *sql.DB) *WriteProcessor {
+func NewWriteProcessor(queue *WriteQueue, mangaService *manga.Service, db *sql.DB, broadcaster history.Broadcaster) *WriteProcessor {
 	return &WriteProcessor{
 		queue:        queue,
 		mangaService: mangaService,
 		db:           db,
+		broadcaster:  broadcaster,
 	}
 }
 
@@ -40,6 +42,8 @@ func (p *WriteProcessor) ProcessOperation(ctx context.Context, op WriteOperation
 		return p.processUpdateProgress(ctx, op)
 	case "create_review":
 		return p.processCreateReview(ctx, op)
+	case "broadcast_progress":
+		return p.processBroadcastProgress(ctx, op)
 	default:
 		return fmt.Errorf("unknown operation type: %s", op.Type)
 	}
@@ -114,6 +118,38 @@ func (p *WriteProcessor) processUpdateProgress(ctx context.Context, op WriteOper
 
 	historyRepo := history.NewRepository(p.db)
 	return historyRepo.UpdateProgress(ctx, op.UserID, op.MangaID, currentChapter, chapterID)
+}
+
+// processBroadcastProgress attempts to broadcast a queued progress update
+func (p *WriteProcessor) processBroadcastProgress(ctx context.Context, op WriteOperation) error {
+	if p.broadcaster == nil {
+		return fmt.Errorf("no broadcaster configured")
+	}
+
+	currentChapter, ok := op.Data["current_chapter"].(int)
+	if !ok {
+		if f, ok := op.Data["current_chapter"].(float64); ok {
+			currentChapter = int(f)
+		} else {
+			return fmt.Errorf("invalid current_chapter type")
+		}
+	}
+
+	var chapterID *int64
+	if idVal, ok := op.Data["chapter_id"]; ok {
+		switch v := idVal.(type) {
+		case int64:
+			chapterID = &v
+		case int:
+			id := int64(v)
+			chapterID = &id
+		case float64:
+			id := int64(v)
+			chapterID = &id
+		}
+	}
+
+	return p.broadcaster.BroadcastProgress(ctx, op.UserID, op.MangaID, currentChapter, chapterID)
 }
 
 // processCreateReview processes a create review operation
