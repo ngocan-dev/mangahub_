@@ -11,6 +11,7 @@ import (
 	_ "modernc.org/sqlite" // Dùng driver giống migration
 
 	dbhealth "github.com/ngocan-dev/mangahub/manga-backend/db"
+	"github.com/ngocan-dev/mangahub/manga-backend/domain/friend"
 	"github.com/ngocan-dev/mangahub/manga-backend/internal/cache"
 	"github.com/ngocan-dev/mangahub/manga-backend/internal/http/handlers"
 	"github.com/ngocan-dev/mangahub/manga-backend/internal/middleware"
@@ -147,6 +148,10 @@ func main() {
 	mangaHandler := handlers.NewMangaHandlerWithService(db, mangaService)
 	mangaHandler.SetBroadcaster(broadcaster)
 
+	friendRepo := friend.NewRepository(db)
+	friendService := friend.NewService(friendRepo, nil)
+	friendHandler := handlers.NewFriendHandler(friendService)
+
 	// Initialize UDP server for chapter release notifications
 	udpAddress := os.Getenv("UDP_SERVER_ADDR")
 	if udpAddress == "" {
@@ -193,6 +198,11 @@ func main() {
 
 	// Route: Login
 	r.POST("/login", authHandler.Login)
+
+	// Routes: Friend management
+	r.GET("/users/search", authHandler.RequireAuth, friendHandler.Search)
+	r.POST("/friends/requests", authHandler.RequireAuth, friendHandler.SendRequest)
+	r.POST("/friends/requests/accept", authHandler.RequireAuth, friendHandler.AcceptRequest)
 
 	// Route: Search Manga
 	r.GET("/manga/search", mangaHandler.Search)
