@@ -14,15 +14,17 @@ var (
 type MessageType string
 
 const (
-	MessageTypeJoin      MessageType = "join"
-	MessageTypeJoined    MessageType = "joined"
-	MessageTypeLeave     MessageType = "leave"
-	MessageTypeLeft      MessageType = "left"
-	MessageTypeMessage   MessageType = "message"
-	MessageTypeHistory   MessageType = "history"
-	MessageTypeError     MessageType = "error"
-	MessageTypeUserList  MessageType = "user_list"
-	MessageTypeHeartbeat MessageType = "heartbeat"
+	MessageTypeJoin        MessageType = "join"
+	MessageTypeJoined      MessageType = "joined"
+	MessageTypeReconnect   MessageType = "reconnect"
+	MessageTypeReconnected MessageType = "reconnected"
+	MessageTypeLeave       MessageType = "leave"
+	MessageTypeLeft        MessageType = "left"
+	MessageTypeMessage     MessageType = "message"
+	MessageTypeHistory     MessageType = "history"
+	MessageTypeError       MessageType = "error"
+	MessageTypeUserList    MessageType = "user_list"
+	MessageTypeHeartbeat   MessageType = "heartbeat"
 )
 
 // Message represents a WebSocket message
@@ -49,12 +51,33 @@ type JoinResponse struct {
 	Message  string `json:"message"`
 }
 
+// ReconnectRequest represents a reconnect attempt where the client wants to resume a session
+type ReconnectRequest struct {
+	Token         string `json:"token"`
+	RoomID        int64  `json:"room_id"`
+	RoomCode      string `json:"room_code,omitempty"`
+	LastMessageID int64  `json:"last_message_id"`
+	Limit         int    `json:"limit,omitempty"`
+}
+
+// ReconnectResponse confirms a successful reconnection and provides context
+type ReconnectResponse struct {
+	Success     bool   `json:"success"`
+	UserID      int64  `json:"user_id"`
+	Username    string `json:"username"`
+	RoomID      int64  `json:"room_id"`
+	RoomName    string `json:"room_name"`
+	Message     string `json:"message"`
+	Reconnected bool   `json:"reconnected"`
+}
+
 // UserJoinedNotification represents a user join notification
 type UserJoinedNotification struct {
-	UserID    int64  `json:"user_id"`
-	Username  string `json:"username"`
-	RoomID    int64  `json:"room_id"`
-	Timestamp string `json:"timestamp"`
+	UserID      int64  `json:"user_id"`
+	Username    string `json:"username"`
+	RoomID      int64  `json:"room_id"`
+	Timestamp   string `json:"timestamp"`
+	Reconnected bool   `json:"reconnected,omitempty"`
 }
 
 // ChatMessage represents a chat message
