@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/ngocan-dev/mangahub/manga-backend/internal/queue"
 	internalchapter "github.com/ngocan-dev/mangahub/manga-backend/internal/service/chapter"
 )
 
@@ -29,6 +30,7 @@ type Service struct {
 	repo           *Repository
 	cache          MangaCacher
 	dbHealth       DBHealthChecker
+	writeQueue     *queue.WriteQueue
 	chapterService ChapterService
 }
 
@@ -65,6 +67,16 @@ func (s *Service) SetDBHealth(checker DBHealthChecker) {
 	s.dbHealth = checker
 }
 
+// SetWriteQueue sets the write queue used for offline write queuing
+func (s *Service) SetWriteQueue(queue *queue.WriteQueue) {
+	s.writeQueue = queue
+}
+
+// IsDBHealthy reports whether the database is currently healthy
+func (s *Service) IsDBHealthy() bool {
+	return s.dbHealth == nil || s.dbHealth.IsHealthy()
+}
+
 // SetChapterService injects the chapter service
 func (s *Service) SetChapterService(chapterSvc ChapterService) {
 	s.chapterService = chapterSvc
@@ -85,11 +97,17 @@ func (s *Service) Search(ctx context.Context, req SearchRequest) (*SearchRespons
 		req.Page = 10000
 	}
 
+	dbHealthy := s.IsDBHealthy()
+
 	if s.cache != nil {
 		cacheKey := GenerateSearchCacheKey(req)
 		if cached, err := s.cache.GetSearchResults(ctx, cacheKey); err == nil && cached != nil {
 			return cached, nil
 		}
+	}
+
+	if !dbHealthy {
+		return nil, ErrDatabaseUnavailable
 	}
 
 	results, total, err := s.repo.Search(ctx, req)
@@ -154,10 +172,16 @@ func (s *Service) GetPopularManga(ctx context.Context, limit int) ([]Manga, erro
 		limit = 50
 	}
 
+	dbHealthy := s.IsDBHealthy()
+
 	if s.cache != nil {
 		if cached, err := s.cache.GetPopularManga(ctx, limit); err == nil && cached != nil {
 			return cached, nil
 		}
+	}
+
+	if !dbHealthy {
+		return nil, ErrDatabaseUnavailable
 	}
 
 	popular, err := s.repo.GetPopularManga(ctx, limit)
@@ -183,7 +207,7 @@ func (s *Service) GetByID(ctx context.Context, mangaID int64) (*Manga, error) {
 
 // GetDetails retrieves detailed manga information
 func (s *Service) GetDetails(ctx context.Context, mangaID int64, userID *int64) (*MangaDetail, error) {
-	dbHealthy := s.dbHealth == nil || s.dbHealth.IsHealthy()
+	dbHealthy := s.IsDBHealthy()
 
 	if s.cache != nil && userID == nil {
 		if cached, err := s.cache.GetMangaDetail(ctx, mangaID); err == nil && cached != nil {
