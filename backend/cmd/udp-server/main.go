@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"flag"
 	"log"
 	"os"
@@ -11,6 +10,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	dbpkg "github.com/ngocan-dev/mangahub/manga-backend/db"
 	"github.com/ngocan-dev/mangahub/manga-backend/internal/udp"
 )
 
@@ -21,15 +21,11 @@ func main() {
 	flag.Parse()
 
 	// Open database connection
-	db, err := sql.Open("sqlite", *dbPath)
+	db, err := dbpkg.OpenSQLite(*dbPath, nil)
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)
 	}
 	defer db.Close()
-
-	if err := db.Ping(); err != nil {
-		log.Fatalf("Failed to ping database: %v", err)
-	}
 
 	// Create UDP server
 	server := udp.NewServer(*address, db)
