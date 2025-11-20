@@ -3,7 +3,10 @@ package friend
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+
+	"github.com/ngocan-dev/mangahub/manga-backend/internal/security"
 )
 
 var (
@@ -13,6 +16,7 @@ var (
 	ErrRequestPending   = errors.New("friend request already pending")
 	ErrBlocked          = errors.New("friendship blocked")
 	ErrNoPendingRequest = errors.New("no pending friend request")
+	ErrInvalidUsername  = errors.New("invalid username")
 )
 
 // Notifier sends optional friend notifications
@@ -49,7 +53,14 @@ func NewService(repo *Repository, notifier Notifier) *Service {
 func (s *Service) SearchUser(ctx context.Context, username string) (*UserSummary, error) {
 	username = strings.TrimSpace(username)
 	if username == "" {
-		return nil, ErrUserNotFound
+		return nil, ErrInvalidUsername
+	}
+
+	// Input length limits are enforced
+	// SQL injection attempts are blocked
+	// Invalid data formats are rejected
+	if err := security.ValidateUsername(username); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidUsername, err)
 	}
 
 	user, err := s.repo.FindUserByUsername(ctx, username)
