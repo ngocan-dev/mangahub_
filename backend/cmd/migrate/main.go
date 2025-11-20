@@ -33,7 +33,7 @@ func main() {
 	log.Println("Connected to SQLite at data/mangahub.db")
 
 	// 3. Read migrations folder
-	migrationsDir := "cmd/db/migrations"
+	migrationsDir := "db/migrations"
 
 	entries, err := os.ReadDir(migrationsDir)
 	if err != nil {
