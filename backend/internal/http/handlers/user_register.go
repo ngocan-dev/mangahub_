@@ -7,8 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	// THAY module path bên dưới bằng module trong backend/go.mod của bạn
-	"mangahub/backend/cmd/domain/user"
+	"github.com/ngocan-dev/mangahub/manga-backend/domain/user"
 )
 
 type UserHandler struct {
