@@ -202,6 +202,76 @@ func (h *MangaHandler) GetReviews(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+// CreateReview handles review submission requests
+// Main Success Scenario:
+// 1. User navigates to manga and clicks "Write Review"
+// 2. User writes review text and assigns rating (1-10)
+// 3. System validates review content and rating
+// 4. System saves review to database with timestamp
+// 5. System displays review on manga page
+func (h *MangaHandler) CreateReview(c *gin.Context) {
+	userIDInterface, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "authentication required",
+		})
+		return
+	}
+
+	userID, ok := userIDInterface.(int64)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "invalid user context",
+		})
+		return
+	}
+
+	mangaID, err := getMangaIDFromParam(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "invalid manga id",
+		})
+		return
+	}
+
+	var req comment.CreateReviewRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "invalid request body",
+		})
+		return
+	}
+
+	response, err := h.commentService.CreateReview(c.Request.Context(), userID, mangaID, req)
+	if err != nil {
+		switch {
+		case errors.Is(err, comment.ErrMangaNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "manga not found"})
+			return
+		case errors.Is(err, comment.ErrMangaNotCompleted):
+			c.JSON(http.StatusForbidden, gin.H{"error": "manga must be in completed list to write review"})
+			return
+		case errors.Is(err, comment.ErrReviewAlreadyExists):
+			c.JSON(http.StatusConflict, gin.H{"error": "review already exists for this manga"})
+			return
+		case errors.Is(err, comment.ErrInvalidReviewRating),
+			errors.Is(err, comment.ErrReviewContentTooShort),
+			errors.Is(err, comment.ErrReviewContentTooLong):
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		case errors.Is(err, comment.ErrDatabaseError):
+			log.Printf("Database error during review creation: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "an error occurred while creating review. please try again later"})
+			return
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+			return
+		}
+	}
+
+	c.JSON(http.StatusCreated, response)
+}
+
 // GetFriendsActivityFeed handles friends activity feed requests
 // Main Success Scenario:
 // 1. User accesses friends activity page
