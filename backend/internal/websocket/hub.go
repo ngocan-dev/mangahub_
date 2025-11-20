@@ -79,6 +79,8 @@ func (h *Hub) handleMessage(client *Client, msg *Message) {
 	switch msg.Type {
 	case MessageTypeJoin:
 		h.handleJoin(client, msg)
+	case MessageTypeReconnect:
+		h.handleReconnect(client, msg)
 	case MessageTypeMessage:
 		h.handleChatMessage(client, msg)
 	case MessageTypeLeave:
@@ -197,6 +199,89 @@ func (h *Hub) handleJoin(client *Client, msg *Message) {
 	h.broadcastUserList(roomID)
 
 	log.Printf("User joined: UserID=%d, Username=%s, RoomID=%d", claims.UserID, claims.Username, roomID)
+}
+
+// handleReconnect allows a client to resume a session and retrieve missed messages
+func (h *Hub) handleReconnect(client *Client, msg *Message) {
+	// Parse reconnect request
+	payloadBytes, err := json.Marshal(msg.Payload)
+	if err != nil {
+		client.SendError("invalid_request", "invalid reconnect request")
+		return
+	}
+
+	var req ReconnectRequest
+	if err := json.Unmarshal(payloadBytes, &req); err != nil {
+		client.SendError("invalid_request", "invalid reconnect request format")
+		return
+	}
+
+	if req.Token == "" {
+		client.SendError("auth_required", "authentication token required")
+		return
+	}
+
+	claims, err := auth.ValidateToken(req.Token)
+	if err != nil {
+		if errors.Is(err, auth.ErrExpiredToken) {
+			client.SendError("token_expired", "your session has expired. please login again")
+		} else {
+			client.SendError("auth_failed", "authentication failed")
+		}
+		return
+	}
+
+	roomID, err := h.getRoomID(context.Background(), req.RoomID, req.RoomCode)
+	if err != nil {
+		client.SendError("room_not_found", "room not found")
+		return
+	}
+
+	client.SetUser(claims.UserID, claims.Username)
+	client.SetRoom(roomID)
+	h.addClient(client, roomID)
+
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+
+	if history, err := h.getChatHistorySince(context.Background(), roomID, req.LastMessageID, limit); err == nil {
+		historyMsg := &Message{
+			Type:    MessageTypeHistory,
+			Payload: history,
+		}
+		client.SendMessage(historyMsg)
+	}
+
+	reconnectResp := &Message{
+		Type: MessageTypeReconnected,
+		Payload: ReconnectResponse{
+			Success:     true,
+			UserID:      claims.UserID,
+			Username:    claims.Username,
+			RoomID:      roomID,
+			RoomName:    h.getRoomName(context.Background(), roomID),
+			Message:     "reconnected successfully",
+			Reconnected: true,
+		},
+	}
+	client.SendMessage(reconnectResp)
+
+	notification := &Message{
+		Type: MessageTypeJoined,
+		Payload: UserJoinedNotification{
+			UserID:      claims.UserID,
+			Username:    claims.Username,
+			RoomID:      roomID,
+			Timestamp:   FormatTimestamp(time.Now()),
+			Reconnected: true,
+		},
+	}
+	h.broadcastToRoomExcept(roomID, client, notification)
+	h.broadcastUserList(roomID)
+
+	log.Printf("User reconnected: UserID=%d, Username=%s, RoomID=%d, LastMessageID=%d", claims.UserID, claims.Username, roomID, req.LastMessageID)
 }
 
 // handleChatMessage handles chat messages
@@ -588,6 +673,49 @@ func (h *Hub) getChatHistory(ctx context.Context, roomID int64, limit int) (*His
 	// Reverse to get chronological order
 	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
 		messages[i], messages[j] = messages[j], messages[i]
+	}
+
+	return &HistoryResponse{
+		RoomID:   roomID,
+		Messages: messages,
+		Limit:    limit,
+	}, nil
+}
+
+// getChatHistorySince fetches chat history after a specific message ID
+func (h *Hub) getChatHistorySince(ctx context.Context, roomID int64, lastMessageID int64, limit int) (*HistoryResponse, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	rows, err := h.db.QueryContext(ctx, `
+SELECT
+cm.Message_Id,
+cm.User_Id,
+u.Username,
+cm.Content,
+cm.Created_At
+FROM Chat_Messages cm
+JOIN Users u ON cm.User_Id = u.UserId
+WHERE cm.Room_Id = ? AND cm.Message_Id > ?
+ORDER BY cm.Created_At ASC
+LIMIT ?
+`, roomID, lastMessageID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	messages := make([]ChatMessage, 0)
+	for rows.Next() {
+		var msg ChatMessage
+		var createdAt time.Time
+		if err := rows.Scan(&msg.MessageID, &msg.UserID, &msg.Username, &msg.Content, &createdAt); err != nil {
+			continue
+		}
+		msg.RoomID = roomID
+		msg.Timestamp = FormatTimestamp(createdAt)
+		messages = append(messages, msg)
 	}
 
 	return &HistoryResponse{
