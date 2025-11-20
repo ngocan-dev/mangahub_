@@ -14,10 +14,13 @@ import (
         "github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/comment"
         "github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/favorite"
         "github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/history"
-        "github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/library"
+    "github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/library"
         "github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/manga"
-        "github.com/ngocan-dev/mangahub/manga-backend/cmd/security"
-        "github.com/ngocan-dev/mangahub/manga-backend/internal/chapter"
+    "github.com/ngocan-dev/mangahub/manga-backend/cmd/security"
+    chapterrepository "github.com/ngocan-dev/mangahub/manga-backend/internal/repository/chapter"
+    chapterservice "github.com/ngocan-dev/mangahub/manga-backend/internal/service/chapter"
+    libraryrepository "github.com/ngocan-dev/mangahub/manga-backend/internal/repository/library"
+    libraryservice "github.com/ngocan-dev/mangahub/manga-backend/internal/service/library"
 )
 
 type MangaHandler struct {
@@ -39,17 +42,17 @@ func NewMangaHandlerWithService(db *sql.DB, service *manga.Service) *MangaHandle
 }
 
 func buildMangaHandler(conn *sql.DB, mangaService *manga.Service) *MangaHandler {
-	chapterRepo := chapter.NewRepository(conn)
-	chapterService := chapter.NewService(chapterRepo)
+    chapterRepo := chapterrepository.NewRepository(conn)
+    chapterService := chapterservice.NewService(chapterRepo)
 	mangaService.SetChapterService(chapterService)
 
-	libraryRepo := library.NewRepository(conn)
+    libraryRepo := libraryrepository.NewRepository(conn)
 	historyRepo := history.NewRepository(conn)
 	favoriteRepo := favorite.NewRepository(conn)
 	commentRepo := comment.NewRepository(conn)
 
 	historyService := history.NewService(historyRepo, chapterService, libraryRepo, mangaService)
-	libraryService := library.NewService(libraryRepo, mangaService, historyService)
+    libraryService := libraryservice.NewService(libraryRepo, mangaService, historyService)
 	favoriteService := favorite.NewService(favoriteRepo, libraryService)
 	commentService := comment.NewService(commentRepo, mangaService, historyService)
 

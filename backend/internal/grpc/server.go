@@ -13,7 +13,8 @@ import (
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/history"
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/library"
 	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/manga"
-	"github.com/ngocan-dev/mangahub/manga-backend/internal/chapter"
+	chapterrepository "github.com/ngocan-dev/mangahub/manga-backend/internal/repository/chapter"
+	chapterservice "github.com/ngocan-dev/mangahub/manga-backend/internal/service/chapter"
 	pb "github.com/ngocan-dev/mangahub/manga-backend/proto/manga"
 )
 
@@ -28,8 +29,8 @@ type Server struct {
 // NewServer creates a new gRPC server instance
 func NewServer(db *sql.DB) *Server {
 	mangaService := manga.NewService(db)
-	chapterRepo := chapter.NewRepository(db)
-	chapterService := chapter.NewService(chapterRepo)
+	chapterRepo := chapterrepository.NewRepository(db)
+	chapterService := chapterservice.NewService(chapterRepo)
 	mangaService.SetChapterService(chapterService)
 	historyRepo := history.NewRepository(db)
 	libraryRepo := library.NewRepository(db)

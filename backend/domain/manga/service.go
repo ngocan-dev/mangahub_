@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"math"
 
-	internalchapter "github.com/ngocan-dev/mangahub/manga-backend/internal/chapter"
+	internalchapter "github.com/ngocan-dev/mangahub/manga-backend/internal/service/chapter"
 )
 
 var (

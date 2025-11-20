@@ -1,6 +1,6 @@
 package manga
 
-import internalchapter "github.com/ngocan-dev/mangahub/manga-backend/internal/chapter"
+import internalchapter "github.com/ngocan-dev/mangahub/manga-backend/internal/service/chapter"
 
 // Manga represents a manga/novel entity
 type Manga struct {
