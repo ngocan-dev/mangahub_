@@ -15,6 +15,7 @@ import (
 	"github.com/ngocan-dev/mangahub/manga-backend/internal/http/handlers"
 	"github.com/ngocan-dev/mangahub/manga-backend/internal/middleware"
 	"github.com/ngocan-dev/mangahub/manga-backend/internal/queue"
+	"github.com/ngocan-dev/mangahub/manga-backend/internal/tcp"
 )
 
 // user handler tối giản
@@ -103,6 +104,22 @@ func main() {
 	// Write operations are queued for later processing
 	writeQueue := queue.NewWriteQueue(1000, 3, nil) // Max 1000 operations, 3 retries
 
+	// Start TCP broadcaster for progress updates
+	tcpAddress := os.Getenv("TCP_SERVER_ADDR")
+	if tcpAddress == "" {
+		tcpAddress = ":9000"
+	}
+	tcpServer := tcp.NewServer(tcpAddress, 200, db)
+	tcpCtx, tcpCancel := context.WithCancel(context.Background())
+	defer tcpCancel()
+	go func() {
+		if err := tcpServer.Start(tcpCtx); err != nil {
+			log.Printf("TCP server stopped: %v", err)
+		}
+	}()
+
+	broadcaster := tcp.NewServerBroadcaster(tcpServer, writeQueue)
+
 	// Create manga service
 	mangaService := handlers.GetMangaService(db, mangaCache)
 
@@ -111,7 +128,7 @@ func main() {
 	mangaService.SetWriteQueue(writeQueue)
 
 	// Initialize write processor
-	writeProcessor := queue.NewWriteProcessor(writeQueue, mangaService, db)
+	writeProcessor := queue.NewWriteProcessor(writeQueue, mangaService, db, broadcaster)
 
 	// Set up reconnection callback to process queued operations
 	healthMonitor.SetOnReconnect(func() {
@@ -127,6 +144,7 @@ func main() {
 	go writeProcessor.StartProcessing(ctx, 30*time.Second)
 
 	mangaHandler := handlers.NewMangaHandlerWithService(db, mangaService)
+	mangaHandler.SetBroadcaster(broadcaster)
 
 	// Initialize UDP notifier (optional - can be nil if UDP server not running)
 	// In production, you would start the UDP server separately or pass the server instance

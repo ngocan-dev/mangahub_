@@ -32,6 +32,13 @@ type MangaHandler struct {
 	commentService  *comment.Service
 }
 
+// SetBroadcaster wires an optional progress broadcaster into the history service
+func (h *MangaHandler) SetBroadcaster(b history.Broadcaster) {
+	if h != nil && h.historyService != nil {
+		h.historyService.SetBroadcaster(b)
+	}
+}
+
 func NewMangaHandler(db *sql.DB, mangaCache interface{}) *MangaHandler {
 	mangaService := GetMangaService(db, mangaCache)
 	return buildMangaHandler(db, mangaService)
