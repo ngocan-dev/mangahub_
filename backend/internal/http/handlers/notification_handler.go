@@ -9,10 +9,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/auth"
-"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/manga"
-"github.com/ngocan-dev/mangahub/manga-backend/cmd/udp"
-"github.com/ngocan-dev/mangahub/manga-backend/internal/chapter"
+    "github.com/ngocan-dev/mangahub/manga-backend/cmd/auth"
+    "github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/manga"
+    "github.com/ngocan-dev/mangahub/manga-backend/cmd/udp"
+    chapterrepository "github.com/ngocan-dev/mangahub/manga-backend/internal/repository/chapter"
+    chapterservice "github.com/ngocan-dev/mangahub/manga-backend/internal/service/chapter"
 )
 
 type NotificationHandler struct {
@@ -63,7 +64,7 @@ func (h *NotificationHandler) NotifyChapterRelease(c *gin.Context) {
 
 	// Step 2: Get manga details
 	mangaService := GetMangaService(h.DB, nil)
-	chapterService := chapter.NewService(chapter.NewRepository(h.DB))
+    chapterService := chapterservice.NewService(chapterrepository.NewRepository(h.DB))
 	mangaService.SetChapterService(chapterService)
 	mangaDetail, err := mangaService.GetDetails(c.Request.Context(), req.NovelID, nil)
 	if err != nil {

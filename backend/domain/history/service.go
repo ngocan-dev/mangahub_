@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	internalchapter "github.com/ngocan-dev/mangahub/manga-backend/internal/chapter"
 	internalmanga "github.com/ngocan-dev/mangahub/manga-backend/internal/manga"
+	internalchapter "github.com/ngocan-dev/mangahub/manga-backend/internal/service/chapter"
 )
 
 var (

@@ -1,14 +1,18 @@
 package chapter
 
-import "context"
+import (
+	"context"
+
+	repository "github.com/ngocan-dev/mangahub/manga-backend/internal/repository/chapter"
+)
 
 // Service exposes higher-level chapter use cases.
 type Service struct {
-	repo *Repository
+	repo *repository.Repository
 }
 
 // NewService constructs a chapter service.
-func NewService(repo *Repository) *Service {
+func NewService(repo *repository.Repository) *Service {
 	return &Service{repo: repo}
 }
 
