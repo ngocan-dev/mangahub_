@@ -11,7 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "modernc.org/sqlite" // Dùng driver giống migration
 
-	dbhealth "github.com/ngocan-dev/mangahub/manga-backend/db"
+	dbpkg "github.com/ngocan-dev/mangahub/manga-backend/db"
 	"github.com/ngocan-dev/mangahub/manga-backend/domain/friend"
 	"github.com/ngocan-dev/mangahub/manga-backend/internal/cache"
 	"github.com/ngocan-dev/mangahub/manga-backend/internal/http/handlers"
@@ -60,40 +60,16 @@ func main() {
 	// Mở database từ đúng thư mục Migration
 	dsn := "file:data/mangahub.db?_foreign_keys=on"
 
-	db, err := sql.Open("sqlite", dsn)
+	db, err := dbpkg.OpenSQLite(dsn, &dbpkg.PoolConfig{
+		MaxOpenConns:    25,
+		MaxIdleConns:    5,
+		ConnMaxLifetime: 5 * time.Minute,
+		ConnMaxIdleTime: 1 * time.Minute,
+	})
 	if err != nil {
 		log.Fatalf("cannot open database: %v", err)
 	}
 	defer db.Close()
-
-	// Optimize database connection pool for concurrent access
-	// API response times remain under 500ms
-	// Database queries complete efficiently
-	db.SetMaxOpenConns(25)                 // Maximum open connections (SQLite recommends 1, but we use WAL mode)
-	db.SetMaxIdleConns(5)                  // Maximum idle connections
-	db.SetConnMaxLifetime(5 * time.Minute) // Connection lifetime
-	db.SetConnMaxIdleTime(1 * time.Minute) // Idle connection timeout
-
-	if err := db.Ping(); err != nil {
-		log.Fatalf("cannot ping database: %v", err)
-	}
-
-	// Enable WAL mode for better concurrent read performance
-	_, err = db.Exec("PRAGMA journal_mode=WAL;")
-	if err != nil {
-		log.Printf("Warning: Could not enable WAL mode: %v", err)
-	}
-
-	// Optimize SQLite for concurrent access
-	_, err = db.Exec("PRAGMA synchronous=NORMAL;")
-	if err != nil {
-		log.Printf("Warning: Could not set synchronous mode: %v", err)
-	}
-
-	_, err = db.Exec("PRAGMA busy_timeout=5000;")
-	if err != nil {
-		log.Printf("Warning: Could not set busy timeout: %v", err)
-	}
 
 	r := gin.Default()
 
@@ -121,7 +97,7 @@ func main() {
 
 	// Initialize database health monitor
 	// System attempts automatic reconnection
-	healthMonitor := dbhealth.NewHealthMonitor(db, 10*time.Second, 30*time.Second)
+	healthMonitor := dbpkg.NewHealthMonitor(db, 10*time.Second, 30*time.Second)
 	healthMonitor.Start()
 	defer healthMonitor.Stop()
 

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"flag"
 	"log"
@@ -16,6 +15,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	dbpkg "github.com/ngocan-dev/mangahub/manga-backend/db"
 	grpcserver "github.com/ngocan-dev/mangahub/manga-backend/internal/grpc"
 	"github.com/ngocan-dev/mangahub/manga-backend/internal/queue"
 	"github.com/ngocan-dev/mangahub/manga-backend/internal/tcp"
@@ -51,15 +51,11 @@ func main() {
 	flag.Parse()
 
 	// Open database connection
-	db, err := sql.Open("sqlite", *dbPath)
+	db, err := dbpkg.OpenSQLite(*dbPath, nil)
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)
 	}
 	defer db.Close()
-
-	if err := db.Ping(); err != nil {
-		log.Fatalf("Failed to ping database: %v", err)
-	}
 
 	// Initialize TCP broadcaster for real-time sync
 	tcpAddress := os.Getenv("TCP_SERVER_ADDR")
