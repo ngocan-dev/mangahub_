@@ -533,7 +533,7 @@ func getMangaIDFromParam(c *gin.Context) (int64, error) {
 }
 
 func getAuthClaims(c *gin.Context) (*auth.Claims, bool) {
-	authHeader := c.GetHeader("Authorization")
+	authHeader := strings.TrimSpace(c.GetHeader("Authorization"))
 	if authHeader == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error":   "authorization header required",
@@ -542,27 +542,61 @@ func getAuthClaims(c *gin.Context) (*auth.Claims, bool) {
 		return nil, false
 	}
 
-	tokenString := strings.TrimSpace(authHeader)
+	tokenString := authHeader
 	if strings.HasPrefix(tokenString, "Bearer ") {
 		tokenString = strings.TrimSpace(tokenString[7:])
 	}
 
 	if tokenString == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "authorization header required",
-			"message": "authentication required",
+			"error":   "invalid authorization header format",
+			"message": "authorization header must be in format: Bearer <token>",
+			"code":    "TOKEN_FORMAT_INVALID",
 		})
 		return nil, false
 	}
 
 	claims, err := auth.ValidateToken(tokenString)
 	if err != nil || claims == nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "invalid token",
-			"message": "token validation failed",
-		})
+		switch {
+		case errors.Is(err, auth.ErrExpiredToken):
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error":   "expired token",
+				"message": "your session has expired. please login again",
+				"code":    "TOKEN_EXPIRED",
+			})
+		case errors.Is(err, auth.ErrInvalidSigningMethod), errors.Is(err, auth.ErrInvalidToken):
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error":   "invalid token",
+				"message": "the provided token is invalid or malformed",
+				"code":    "TOKEN_INVALID",
+			})
+		case errors.Is(err, auth.ErrInvalidClaims):
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error":   "invalid token claims",
+				"message": "the token contains invalid or missing claims",
+				"code":    "TOKEN_CLAIMS_INVALID",
+			})
+		case errors.Is(err, auth.ErrTokenNotBefore):
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error":   "token not yet valid",
+				"message": "the token is not yet valid",
+				"code":    "TOKEN_NOT_BEFORE",
+			})
+		default:
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error":   "authentication failed",
+				"message": "unable to validate authentication token",
+			})
+		}
+
 		return nil, false
 	}
+
+	// Set user context for downstream handlers to avoid re-validating token
+	c.Set("user_id", claims.UserID)
+	c.Set("username", claims.Username)
+	c.Set("email", claims.Email)
 
 	return claims, true
 }
