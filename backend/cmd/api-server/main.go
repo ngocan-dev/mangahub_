@@ -231,8 +231,8 @@ func main() {
 	// Route: Get Reading Analytics with filters (requires authentication)
 	r.GET("/analytics/reading", authHandler.RequireAuth, mangaHandler.GetReadingAnalytics)
 
-	// Route: Admin - Notify Chapter Release
-	r.POST("/admin/notify", notificationHandler.NotifyChapterRelease)
+	// Route: Admin - Notify Chapter Release (requires authentication)
+	r.POST("/admin/notify", authHandler.RequireAuth, notificationHandler.NotifyChapterRelease)
 
 	log.Println("HTTP API listening on :8080")
 	if err := r.Run(":8080"); err != nil {
