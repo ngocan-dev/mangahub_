@@ -43,6 +43,13 @@ func NewServer(db *sql.DB) *Server {
 	}
 }
 
+// SetBroadcaster configures the optional broadcaster used for progress updates
+func (s *Server) SetBroadcaster(b history.Broadcaster) {
+	if s.historyService != nil {
+		s.historyService.SetBroadcaster(b)
+	}
+}
+
 // GetManga retrieves manga information by ID
 // Main Success Scenario:
 // 1. Client service calls GetManga gRPC method

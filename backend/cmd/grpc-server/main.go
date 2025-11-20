@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"flag"
 	"log"
@@ -14,6 +15,8 @@ import (
 	_ "modernc.org/sqlite"
 
 	grpcserver "github.com/ngocan-dev/mangahub/manga-backend/internal/grpc"
+	"github.com/ngocan-dev/mangahub/manga-backend/internal/queue"
+	"github.com/ngocan-dev/mangahub/manga-backend/internal/tcp"
 	pb "github.com/ngocan-dev/mangahub/manga-backend/proto/manga"
 )
 
@@ -34,11 +37,30 @@ func main() {
 		log.Fatalf("Failed to ping database: %v", err)
 	}
 
+	// Initialize TCP broadcaster for real-time sync
+	tcpAddress := os.Getenv("TCP_SERVER_ADDR")
+	if tcpAddress == "" {
+		tcpAddress = ":9000"
+	}
+	tcpServer := tcp.NewServer(tcpAddress, 200, db)
+	tcpCtx, tcpCancel := context.WithCancel(context.Background())
+	defer tcpCancel()
+	go func() {
+		log.Printf("Starting TCP broadcast server on %s", tcpAddress)
+		if err := tcpServer.Start(tcpCtx); err != nil {
+			log.Printf("TCP server stopped: %v", err)
+		}
+	}()
+
+	writeQueue := queue.NewWriteQueue(1000, 3, nil)
+	broadcaster := tcp.NewServerBroadcaster(tcpServer, writeQueue)
+
 	// Create gRPC server
 	grpcServer := grpc.NewServer()
 
 	// Register manga service
 	mangaServer := grpcserver.NewServer(db)
+	mangaServer.SetBroadcaster(broadcaster)
 	pb.RegisterMangaServiceServer(grpcServer, mangaServer)
 
 	// Create listener
