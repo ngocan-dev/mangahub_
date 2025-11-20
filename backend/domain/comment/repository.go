@@ -57,6 +57,20 @@ func (r *Repository) CreateReview(ctx context.Context, userID, mangaID int64, ra
 	return reviewID, nil
 }
 
+// CheckMangaInCompletedLibrary verifies if the manga exists in the user's completed list
+func (r *Repository) CheckMangaInCompletedLibrary(ctx context.Context, userID, mangaID int64) (bool, error) {
+	var count int
+	err := r.db.QueryRowContext(ctx, `
+        SELECT COUNT(*)
+        FROM User_Library
+        WHERE User_Id = ? AND Novel_Id = ? AND Status = 'completed'
+    `, userID, mangaID).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 // GetReviewByUserAndManga returns review if exists
 func (r *Repository) GetReviewByUserAndManga(ctx context.Context, userID, mangaID int64) (*Review, error) {
 	query := `
