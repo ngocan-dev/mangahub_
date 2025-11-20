@@ -490,6 +490,14 @@ func getAuthClaims(c *gin.Context) (*auth.Claims, bool) {
 	return claims, true
 }
 func (h *MangaHandler) GetDetails(c *gin.Context) {
+	mangaID, err := getMangaIDFromParam(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "invalid manga id",
+		})
+		return
+	}
+
 	// Try to get user ID from JWT token (optional - endpoint works without auth)
 	var userID *int64
 	authHeader := c.GetHeader("Authorization")
@@ -534,6 +542,42 @@ func (h *MangaHandler) GetDetails(c *gin.Context) {
 			"error": "internal server error",
 		})
 		return
+	}
+
+	if userID != nil {
+		if status, statusErr := h.libraryService.GetLibraryStatus(c.Request.Context(), *userID, mangaID); statusErr != nil {
+			if errors.Is(statusErr, library.ErrDatabaseError) {
+				log.Printf("Database error during library status lookup: %v", statusErr)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error": "an error occurred while retrieving library status. please try again later",
+				})
+				return
+			}
+
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "internal server error",
+			})
+			return
+		} else {
+			detail.LibraryStatus = status
+		}
+
+		if progress, progressErr := h.historyService.GetProgress(c.Request.Context(), *userID, mangaID); progressErr != nil {
+			if errors.Is(progressErr, history.ErrDatabaseError) {
+				log.Printf("Database error during progress lookup: %v", progressErr)
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error": "an error occurred while retrieving progress. please try again later",
+				})
+				return
+			}
+
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "internal server error",
+			})
+			return
+		} else {
+			detail.UserProgress = progress
+		}
 	}
 
 	// Success: Return manga details
