@@ -11,12 +11,14 @@ import (
 
 const (
 	// Cache key prefixes
-	mangaDetailPrefix = "manga:detail:"
-	mangaSearchPrefix = "manga:search:"
+	mangaDetailPrefix  = "manga:detail:"
+	mangaSearchPrefix  = "manga:search:"
+	popularMangaPrefix = "manga:popular:"
 
 	// Cache expiration times
-	mangaDetailExpiration = 1 * time.Hour    // Manga details cached for 1 hour
-	mangaSearchExpiration = 30 * time.Minute // Search results cached for 30 minutes
+	mangaDetailExpiration  = 1 * time.Hour    // Manga details cached for 1 hour
+	mangaSearchExpiration  = 30 * time.Minute // Search results cached for 30 minutes
+	popularMangaExpiration = 15 * time.Minute // Popular manga cached for 15 minutes
 )
 
 // MangaCache provides caching for manga data
@@ -94,6 +96,42 @@ func (c *MangaCache) GetSearchResults(ctx context.Context, cacheKey string) (*ma
 func (c *MangaCache) SetSearchResults(ctx context.Context, cacheKey string, response *manga.SearchResponse) error {
 	key := fmt.Sprintf("%s%s", mangaSearchPrefix, cacheKey)
 	return c.client.Set(ctx, key, response, mangaSearchExpiration)
+}
+
+// GetPopularManga retrieves cached popular manga lists
+// Step 4: Subsequent requests serve data from cache
+func (c *MangaCache) GetPopularManga(ctx context.Context, limit int) ([]manga.Manga, error) {
+	key := fmt.Sprintf("%s%d", popularMangaPrefix, limit)
+
+	data, err := c.client.Get(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	if data == nil {
+		return nil, nil
+	}
+
+	var popular []manga.Manga
+	if err := json.Unmarshal(data, &popular); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal popular manga: %w", err)
+	}
+
+	return popular, nil
+}
+
+// SetPopularManga caches the popular manga list with expiration
+// Step 2: System stores manga details in Redis cache
+// Step 3: System sets appropriate cache expiration times
+func (c *MangaCache) SetPopularManga(ctx context.Context, limit int, popular []manga.Manga) error {
+	key := fmt.Sprintf("%s%d", popularMangaPrefix, limit)
+	return c.client.Set(ctx, key, popular, popularMangaExpiration)
+}
+
+// InvalidatePopularManga removes cached popular manga lists
+// Step 5: System updates cache when data changes
+func (c *MangaCache) InvalidatePopularManga(ctx context.Context) error {
+	pattern := fmt.Sprintf("%s*", popularMangaPrefix)
+	return c.client.DeletePattern(ctx, pattern)
 }
 
 // GenerateSearchCacheKey generates a cache key for search request

@@ -233,3 +233,51 @@ func (r *Repository) GetByID(ctx context.Context, mangaID int64) (*Manga, error)
 	}
 	return &m, nil
 }
+
+// GetPopularManga returns the most popular manga based on rating points
+func (r *Repository) GetPopularManga(ctx context.Context, limit int) ([]Manga, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 50 {
+		limit = 50
+	}
+
+	query := `
+        SELECT Novel_Id, Novel_Name, Title, Author, Genre, Status, Description, Image, Rating_Point
+        FROM Novels
+        ORDER BY Rating_Point DESC, Date_Updated DESC
+        LIMIT ?
+    `
+
+	rows, err := r.db.QueryContext(ctx, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var popular []Manga
+	for rows.Next() {
+		var m Manga
+		if err := rows.Scan(
+			&m.ID,
+			&m.Name,
+			&m.Title,
+			&m.Author,
+			&m.Genre,
+			&m.Status,
+			&m.Description,
+			&m.Image,
+			&m.RatingPoint,
+		); err != nil {
+			return nil, err
+		}
+		popular = append(popular, m)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return popular, nil
+}
