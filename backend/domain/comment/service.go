@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/rating"
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/security"
+	"github.com/ngocan-dev/mangahub/manga-backend/domain/rating"
 	internalmanga "github.com/ngocan-dev/mangahub/manga-backend/internal/manga"
+	"github.com/ngocan-dev/mangahub/manga-backend/internal/security"
 )
 
 var (

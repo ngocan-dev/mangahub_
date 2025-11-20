@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/cmd/domain/history"
+	"github.com/ngocan-dev/mangahub/manga-backend/domain/history"
 	internalmanga "github.com/ngocan-dev/mangahub/manga-backend/internal/manga"
 )
 
