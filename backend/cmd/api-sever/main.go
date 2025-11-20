@@ -10,11 +10,11 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "modernc.org/sqlite" // Dùng driver giống migration
 
-	dbhealth "github.com/ngocan-dev/mangahub_/backend/cmd/db"
-	"github.com/ngocan-dev/mangahub_/backend/cmd/http/handlers"
-	"github.com/ngocan-dev/mangahub_/backend/cmd/middleware"
-	"github.com/ngocan-dev/mangahub_/backend/cmd/queue"
-	"github.com/ngocan-dev/mangahub_/backend/internal/cache"
+	"github.com/ngocan-dev/mangahub/manga-backend/cmd/cache"
+	dbhealth "github.com/ngocan-dev/mangahub/manga-backend/cmd/db"
+	"github.com/ngocan-dev/mangahub/manga-backend/cmd/http/handlers"
+	"github.com/ngocan-dev/mangahub/manga-backend/cmd/middleware"
+	"github.com/ngocan-dev/mangahub/manga-backend/cmd/queue"
 )
 
 // user handler tối giản
@@ -164,8 +164,8 @@ func main() {
 	// Route: Add Manga to Library
 	r.POST("/manga/:id/library", mangaHandler.AddToLibrary)
 
-	// Route: Update Reading Progress (requires authentication)
-	r.PUT("/manga/:id/progress", authHandler.RequireAuth, mangaHandler.UpdateProgress)
+	// Route: Update Reading Progress
+	r.PUT("/manga/:id/progress", mangaHandler.UpdateProgress)
 
 	// Route: Create Review (requires authentication)
 	r.POST("/manga/:id/reviews", authHandler.RequireAuth, mangaHandler.CreateReview)
