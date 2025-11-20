@@ -46,6 +46,10 @@ func (h *UserHandler) Register(c *gin.Context) {
 			c.JSON(http.StatusConflict, gin.H{"error": "username already exists"})
 			return
 		}
+		if errors.Is(err, user.ErrDuplicateEmail) {
+			c.JSON(http.StatusConflict, gin.H{"error": "email already exists"})
+			return
+		}
 
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 		return
