@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log"
 	"os"
 	"time"
@@ -31,6 +32,28 @@ func NewUserHandler(db *sql.DB) *userHandler {
 
 func (h *userHandler) Register(c *gin.Context) {
 	c.JSON(201, gin.H{"message": "user registered (stub)"})
+}
+
+func startTCPServerWithRestart(ctx context.Context, server *tcp.Server, address string, maxClients int, backoff time.Duration) {
+	for {
+		log.Printf("Starting TCP server on %s (max clients: %d)", address, maxClients)
+		if err := server.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			log.Printf("TCP server stopped with error: %v", err)
+		} else {
+			log.Printf("TCP server stopped")
+		}
+
+		if ctx.Err() != nil {
+			return
+		}
+
+		log.Printf("Restarting TCP server in %s...", backoff)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
+	}
 }
 
 func main() {
@@ -114,11 +137,7 @@ func main() {
 	tcpServer := tcp.NewServer(tcpAddress, 200, db)
 	tcpCtx, tcpCancel := context.WithCancel(context.Background())
 	defer tcpCancel()
-	go func() {
-		if err := tcpServer.Start(tcpCtx); err != nil {
-			log.Printf("TCP server stopped: %v", err)
-		}
-	}()
+	go startTCPServerWithRestart(tcpCtx, tcpServer, tcpAddress, 200, 5*time.Second)
 
 	broadcaster := tcp.NewServerBroadcaster(tcpServer, writeQueue)
 

@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"flag"
 	"log"
 	"net"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	grpc "google.golang.org/grpc"
 
@@ -19,6 +21,28 @@ import (
 	"github.com/ngocan-dev/mangahub/manga-backend/internal/tcp"
 	pb "github.com/ngocan-dev/mangahub/manga-backend/proto/manga"
 )
+
+func startTCPServerWithRestart(ctx context.Context, server *tcp.Server, address string, maxClients int, backoff time.Duration) {
+	for {
+		log.Printf("Starting TCP server on %s (max clients: %d)", address, maxClients)
+		if err := server.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			log.Printf("TCP server stopped with error: %v", err)
+		} else {
+			log.Printf("TCP server stopped")
+		}
+
+		if ctx.Err() != nil {
+			return
+		}
+
+		log.Printf("Restarting TCP server in %s...", backoff)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
+	}
+}
 
 func main() {
 	// Parse command line flags
@@ -45,12 +69,7 @@ func main() {
 	tcpServer := tcp.NewServer(tcpAddress, 200, db)
 	tcpCtx, tcpCancel := context.WithCancel(context.Background())
 	defer tcpCancel()
-	go func() {
-		log.Printf("Starting TCP broadcast server on %s", tcpAddress)
-		if err := tcpServer.Start(tcpCtx); err != nil {
-			log.Printf("TCP server stopped: %v", err)
-		}
-	}()
+	go startTCPServerWithRestart(tcpCtx, tcpServer, tcpAddress, 200, 5*time.Second)
 
 	writeQueue := queue.NewWriteQueue(1000, 3, nil)
 	broadcaster := tcp.NewServerBroadcaster(tcpServer, writeQueue)

@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ngocan-dev/mangahub/manga-backend/internal/auth"
@@ -22,6 +24,7 @@ type Server struct {
 	clientsByUser map[int64][]*Client // Multiple devices per user
 	mu            sync.RWMutex
 	broadcastCh   chan ProgressUpdate
+	running       atomic.Bool
 }
 
 // NewServer creates a new TCP server instance
@@ -38,7 +41,16 @@ func NewServer(address string, maxClients int, db *sql.DB) *Server {
 }
 
 // Start starts the TCP server
-func (s *Server) Start(ctx context.Context) error {
+func (s *Server) Start(ctx context.Context) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("tcp server panic: %v", r)
+		}
+		s.running.Store(false)
+	}()
+
+	s.running.Store(true)
+
 	listener, err := net.Listen("tcp", s.address)
 	if err != nil {
 		return err
@@ -399,6 +411,11 @@ func (s *Server) GetClientCount() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.clients)
+}
+
+// IsRunning returns whether the TCP server is currently accepting connections
+func (s *Server) IsRunning() bool {
+	return s.running.Load()
 }
 
 // sendConnectionError sends an error message for connections that cannot be fully initialized

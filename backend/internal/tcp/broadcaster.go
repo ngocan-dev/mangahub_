@@ -23,14 +23,14 @@ func NewServerBroadcaster(server *Server, queue *queue.WriteQueue) *ServerBroadc
 func (b *ServerBroadcaster) BroadcastProgress(ctx context.Context, userID, novelID int64, chapter int, chapterID *int64) error {
 	var broadcastErr error
 
-	if b.server != nil {
+	if b.server != nil && b.server.IsRunning() {
 		if err := b.server.BroadcastProgress(ctx, userID, novelID, chapter, chapterID); err == nil {
 			return nil
 		} else {
 			broadcastErr = err
 		}
 	} else {
-		broadcastErr = errors.New("tcp server not configured")
+		broadcastErr = errors.New("tcp server not configured or not running")
 	}
 
 	if b.queue != nil {
