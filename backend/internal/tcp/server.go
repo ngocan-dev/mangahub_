@@ -74,6 +74,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 			if currentClients >= s.maxClients {
 				log.Printf("Server at capacity (%d/%d), rejecting connection", currentClients, s.maxClients)
+				sendConnectionError(conn, "server_capacity", "server at capacity, please try again later")
 				conn.Close()
 				continue
 			}
@@ -398,4 +399,26 @@ func (s *Server) GetClientCount() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return len(s.clients)
+}
+
+// sendConnectionError sends an error message for connections that cannot be fully initialized
+func sendConnectionError(conn net.Conn, code, message string) {
+	msg := &Message{
+		Type:  MessageTypeError,
+		Error: message,
+		Payload: ErrorResponse{
+			Code:    code,
+			Message: message,
+		},
+	}
+
+	data, err := SerializeMessage(msg)
+	if err != nil {
+		return
+	}
+
+	data = append(data, '\n')
+
+	conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	_, _ = conn.Write(data)
 }
