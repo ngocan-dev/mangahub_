@@ -17,6 +17,7 @@ import (
 var (
 	emailRegex            = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 	ErrDuplicateUsername  = errors.New("duplicate username")
+	ErrDuplicateEmail     = errors.New("duplicate email")
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrUserNotFound       = errors.New("user not found")
 )
@@ -43,17 +44,40 @@ func Register(ctx context.Context, db *sql.DB, req RegistrationRequest) (*User, 
 		return nil, fmt.Errorf("invalid username: %w", err)
 	}
 
+	// Validate email format
+	// Invalid data formats are rejected
+	if err := security.ValidateEmail(req.Email); err != nil {
+		return nil, fmt.Errorf("invalid email: %w", err)
+	}
+
+	// Validate password strength
+	if err := security.ValidatePassword(req.Password); err != nil {
+		return nil, fmt.Errorf("invalid password: %w", err)
+	}
+
 	// A1: check username trùng
 	// SQL injection attempts are blocked (parameterized query)
 	var existing int
 	if err := db.QueryRowContext(ctx,
-		"SELECT COUNT(1) FROM users WHERE username = ?",
+		"SELECT COUNT(1) FROM Users WHERE Username = ?",
 		req.Username,
 	).Scan(&existing); err != nil {
 		return nil, err
 	}
 	if existing > 0 {
 		return nil, ErrDuplicateUsername
+	}
+
+	// Check duplicate email
+	existing = 0
+	if err := db.QueryRowContext(ctx,
+		"SELECT COUNT(1) FROM Users WHERE Email = ?",
+		req.Email,
+	).Scan(&existing); err != nil {
+		return nil, err
+	}
+	if existing > 0 {
+		return nil, ErrDuplicateEmail
 	}
 
 	// Step 3: hash mật khẩu
@@ -66,9 +90,9 @@ func Register(ctx context.Context, db *sql.DB, req RegistrationRequest) (*User, 
 
 	// Step 4: insert DB
 	res, err := db.ExecContext(ctx, `
-		INSERT INTO users (username, email, password_hash, created_at)
-		VALUES (?, ?, ?, ?)
-	`, req.Username, req.Email, string(hashed), createdAt)
+                INSERT INTO Users (Username, Email, PasswordHash, Created_Date)
+                VALUES (?, ?, ?, ?)
+        `, req.Username, req.Email, string(hashed), createdAt)
 	if err != nil {
 		return nil, err
 	}
