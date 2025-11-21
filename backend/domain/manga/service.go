@@ -8,7 +8,7 @@ import (
 	"math"
 
 	"github.com/ngocan-dev/mangahub/manga-backend/internal/queue"
-	pkgchapter "github.com/ngocan-dev/mangahub/manga-backend/pkg/models/chapter"
+	pkgchapter "github.com/ngocan-dev/mangahub/manga-backend/pkg/models"
 )
 
 var (
