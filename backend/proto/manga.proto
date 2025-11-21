@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package manga;
 
-option go_package = "github.com/ngocan-dev/mangahub/backend/proto/manga";
+option go_package = "github.com/ngocan-dev/mangahub/backend/proto/gen;mangapb";
 
 // MangaService provides methods to fetch manga data
 service MangaService {

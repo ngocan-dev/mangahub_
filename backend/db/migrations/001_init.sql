@@ -1,4 +1,4 @@
-PRAGMA foreign_keys = ON;
+ÿþPRAGMA foreign_keys = ON;
 
 /* ============================================================
    DROP ALL OBJECTS (Reset database)
@@ -47,7 +47,7 @@ CREATE TABLE Users (
     Created_Date  DATETIME DEFAULT CURRENT_TIMESTAMP,
     Status        TEXT NOT NULL DEFAULT 'active',
 
-    FOREIGN KEY(RoleId) REFERENCES Roles(RoleId)
+    FOREIGN KEY(RoleIdREFERENCES Roles(RoleId)
 );
 
 CREATE TABLE User_Sessions (
@@ -60,7 +60,7 @@ CREATE TABLE User_Sessions (
     Expires_At    DATETIME,
     Revoked_At    DATETIME,
 
-    FOREIGN KEY(User_Id) REFERENCES Users(UserId) ON DELETE CASCADE
+    FOREIGN KEY(User_IdREFERENCES Users(UserId) ON DELETE CASCADE
 );
 
 CREATE INDEX IX_User_Sessions_User ON User_Sessions(User_Id);
@@ -83,7 +83,7 @@ CREATE TABLE Novels (
     Date_Updated   DATETIME DEFAULT CURRENT_TIMESTAMP,
     Created_By     INTEGER,
     
-    FOREIGN KEY(Created_By) REFERENCES Users(UserId)
+    FOREIGN KEY(Created_ByREFERENCES Users(UserId)
 );
 
 CREATE TABLE Chapters (
@@ -96,7 +96,7 @@ CREATE TABLE Chapters (
     Uploaded_By    INTEGER,
 
     FOREIGN KEY(Novel_Id) REFERENCES Novels(Novel_Id) ON DELETE CASCADE,
-    FOREIGN KEY(Uploaded_By) REFERENCES Users(UserId),
+    FOREIGN KEY(Uploaded_ByREFERENCES Users(UserId),
 
     UNIQUE(Novel_Id, Chapter_Number)
 );
@@ -114,8 +114,8 @@ CREATE TABLE Novel_Tags (
     TagId    INTEGER NOT NULL,
 
     PRIMARY KEY (Novel_Id, TagId),
-    FOREIGN KEY(Novel_Id) REFERENCES Novels(Novel_Id) ON DELETE CASCADE,
-    FOREIGN KEY(TagId) REFERENCES Tags(TagId) ON DELETE CASCADE
+    FOREIGN KEY(Novel_IdREFERENCES Novels(Novel_IdON DELETE CASCADE,
+    FOREIGN KEY(TagId) REFERENCES Tags(TagIdON DELETE CASCADE
 );
 
 CREATE TABLE Novel_External_Links (
@@ -141,7 +141,7 @@ CREATE TABLE Rating_System (
     Rating_Value INTEGER CHECK (Rating_Value BETWEEN 1 AND 5),
     Rating_Date  DATETIME DEFAULT CURRENT_TIMESTAMP,
 
-    FOREIGN KEY(User_Id) REFERENCES Users(UserId) ON DELETE CASCADE,
+    FOREIGN KEY(User_IdREFERENCES Users(UserId) ON DELETE CASCADE,
     FOREIGN KEY(Novel_Id) REFERENCES Novels(Novel_Id) ON DELETE CASCADE,
 
     UNIQUE(User_Id, Novel_Id)
@@ -157,10 +157,10 @@ CREATE TABLE Comment_System (
     Comment_Date       DATETIME DEFAULT CURRENT_TIMESTAMP,
     Is_Deleted         INTEGER DEFAULT 0,
 
-    FOREIGN KEY(User_Id) REFERENCES Users(UserId),
+    FOREIGN KEY(User_IdREFERENCES Users(UserId),
     FOREIGN KEY(Novel_Id) REFERENCES Novels(Novel_Id),
     FOREIGN KEY(Chapter_Id) REFERENCES Chapters(Chapter_Id),
-    FOREIGN KEY(Parent_Comment_Id) REFERENCES Comment_System(Comment_Id)
+    FOREIGN KEY(Parent_Comment_IdREFERENCES Comment_System(Comment_Id)
 );
 
 /* SQLite Trigger version */
@@ -187,7 +187,7 @@ CREATE TABLE User_Library (
     Last_Updated_At DATETIME DEFAULT CURRENT_TIMESTAMP,
     Notes           TEXT,
 
-    FOREIGN KEY(User_Id) REFERENCES Users(UserId) ON DELETE CASCADE,
+    FOREIGN KEY(User_IdREFERENCES Users(UserId) ON DELETE CASCADE,
     FOREIGN KEY(Novel_Id) REFERENCES Novels(Novel_Id) ON DELETE CASCADE,
 
     UNIQUE(User_Id, Novel_Id)
@@ -207,9 +207,9 @@ CREATE TABLE Reading_Progress (
     Source             TEXT,
     Notes              TEXT,
 
-    FOREIGN KEY(User_Id) REFERENCES Users(UserId) ON DELETE CASCADE,
-    FOREIGN KEY(Novel_Id) REFERENCES Novels(Novel_Id) ON DELETE CASCADE,
-    FOREIGN KEY(Current_Chapter_Id) REFERENCES Chapters(Chapter_Id),
+    FOREIGN KEY(User_Id) REFERENCES Users(UserIdON DELETE CASCADE,
+    FOREIGN KEY(Novel_IdREFERENCES Novels(Novel_IdON DELETE CASCADE,
+    FOREIGN KEY(Current_Chapter_IdREFERENCES Chapters(Chapter_Id),
 
     UNIQUE(User_Id, Novel_Id)
 );
@@ -228,8 +228,8 @@ CREATE TABLE Progress_History (
     Notes        TEXT,
     Created_At   DATETIME DEFAULT CURRENT_TIMESTAMP,
 
-    FOREIGN KEY(User_Id) REFERENCES Users(UserId) ON DELETE CASCADE,
-    FOREIGN KEY(Novel_Id) REFERENCES Novels(Novel_Id) ON DELETE CASCADE
+    FOREIGN KEY(User_Id) REFERENCES Users(UserIdON DELETE CASCADE,
+    FOREIGN KEY(Novel_IdREFERENCES Novels(Novel_IdON DELETE CASCADE
 );
 
 CREATE INDEX IX_ProgressHistory_User
@@ -260,8 +260,8 @@ CREATE TABLE Chat_Messages (
     Content    TEXT NOT NULL,
     Created_At DATETIME DEFAULT CURRENT_TIMESTAMP,
 
-    FOREIGN KEY(Room_Id) REFERENCES Chat_Rooms(Room_Id) ON DELETE CASCADE,
-    FOREIGN KEY(User_Id) REFERENCES Users(UserId) ON DELETE CASCADE
+    FOREIGN KEY(Room_IdREFERENCES Chat_Rooms(Room_Id) ON DELETE CASCADE,
+    FOREIGN KEY(User_IdREFERENCES Users(UserId) ON DELETE CASCADE
 );
 
 CREATE INDEX IX_ChatMessages_Room ON Chat_Messages(Room_Id);
@@ -282,7 +282,7 @@ CREATE TABLE Sync_Sessions (
     Last_Seen_At DATETIME,
     Last_Ip      TEXT,
 
-    FOREIGN KEY(User_Id) REFERENCES Users(UserId) ON DELETE CASCADE,
+    FOREIGN KEY(User_Id) REFERENCES Users(UserIdON DELETE CASCADE,
 
     CHECK (Status IN ('active','closed'))
 );
@@ -302,8 +302,8 @@ CREATE TABLE Notification_Subscriptions (
     Is_Active       INTEGER NOT NULL DEFAULT 1,
     Created_At      DATETIME DEFAULT CURRENT_TIMESTAMP,
 
-    FOREIGN KEY(User_Id) REFERENCES Users(UserId) ON DELETE CASCADE,
-    FOREIGN KEY(Novel_Id) REFERENCES Novels(Novel_Id) ON DELETE CASCADE
+    FOREIGN KEY(User_Id) REFERENCES Users(UserIdON DELETE CASCADE,
+    FOREIGN KEY(Novel_IdREFERENCES Novels(Novel_IdON DELETE CASCADE
 );
 
 CREATE INDEX IX_NotifySubs_User_Novel
@@ -327,7 +327,7 @@ CREATE VIEW vw_Novel_With_Tags AS
 SELECT
     n.Novel_Id,
     n.Novel_Name,
-    GROUP_CONCAT(t.TagName, ', ') AS Tags
+    GROUP_CONCAT(t.TagName, ', 'AS Tags
 FROM Novels n
 LEFT JOIN Novel_Tags nt ON n.Novel_Id = nt.Novel_Id
 LEFT JOIN Tags t ON nt.TagId = t.TagId
@@ -339,5 +339,5 @@ GROUP BY n.Novel_Id, n.Novel_Name;
 ============================================================ */
 
 INSERT OR IGNORE INTO Roles(RoleName) VALUES ('Admin');
-INSERT OR IGNORE INTO Roles(RoleName) VALUES ('Editor');
-INSERT OR IGNORE INTO Roles(RoleName) VALUES ('User');
+INSERT OR IGNORE INTO Roles(RoleNameVALUES ('Editor');
+INSERT OR IGNORE INTO Roles(RoleNameVALUES ('User');

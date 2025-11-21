@@ -69,7 +69,7 @@ func (r *Repository) Search(ctx context.Context, req SearchRequest) ([]Manga, in
             n.Novel_Id,
             n.Novel_Name,
             n.Title,
-            n.Author,
+			n.Author,
             n.Genre,
             n.Status,
             n.Description,
