@@ -8,7 +8,7 @@ import (
 	"math"
 
 	"github.com/ngocan-dev/mangahub/manga-backend/internal/queue"
-	internalchapter "github.com/ngocan-dev/mangahub/manga-backend/internal/service/chapter"
+	pkgchapter "github.com/ngocan-dev/mangahub/manga-backend/pkg/models/chapter"
 )
 
 var (
@@ -22,7 +22,7 @@ const defaultChapterListLimit = 100
 // ChapterService exposes chapter operations required by the manga service
 type ChapterService interface {
 	GetChapterCount(ctx context.Context, mangaID int64) (int, error)
-	GetChapters(ctx context.Context, mangaID int64, limit, offset int) ([]internalchapter.ChapterSummary, error)
+	GetChapters(ctx context.Context, mangaID int64, limit, offset int) ([]pkgchapter.ChapterSummary, error)
 }
 
 // Service provides manga metadata operations
@@ -236,7 +236,7 @@ func (s *Service) GetDetails(ctx context.Context, mangaID int64, userID *int64) 
 	}
 
 	chapterCount := 0
-	var chapters []internalchapter.ChapterSummary
+	var chapters []pkgchapter.ChapterSummary
 	if s.chapterService != nil {
 		if count, err := s.chapterService.GetChapterCount(ctx, mangaID); err == nil {
 			chapterCount = count

@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+
+	pkgchapter "github.com/ngocan-dev/mangahub/manga-backend/pkg/models/chapter"
 )
 
 // Repository encapsulates all database access related to chapters.
@@ -17,7 +19,7 @@ func NewRepository(db *sql.DB) *Repository {
 }
 
 // GetChapters returns paginated chapters for a manga ordered by chapter number.
-func (r *Repository) GetChapters(ctx context.Context, mangaID int64, limit, offset int) ([]ChapterSummary, error) {
+func (r *Repository) GetChapters(ctx context.Context, mangaID int64, limit, offset int) ([]pkgchapter.ChapterSummary, error) {
 	if limit <= 0 {
 		limit = 20
 	}
@@ -40,10 +42,10 @@ func (r *Repository) GetChapters(ctx context.Context, mangaID int64, limit, offs
 	}
 	defer rows.Close()
 
-	var chapters []ChapterSummary
+	var chapters []pkgchapter.ChapterSummary
 	for rows.Next() {
 		var (
-			summary   ChapterSummary
+			summary   pkgchapter.ChapterSummary
 			title     sql.NullString
 			updatedAt sql.NullTime
 		)
@@ -64,13 +66,13 @@ func (r *Repository) GetChapters(ctx context.Context, mangaID int64, limit, offs
 }
 
 // GetChapter returns a single chapter (including content) by number.
-func (r *Repository) GetChapter(ctx context.Context, mangaID int64, chapterNumber int) (*Chapter, error) {
+func (r *Repository) GetChapter(ctx context.Context, mangaID int64, chapterNumber int) (*pkgchapter.Chapter, error) {
 	if chapterNumber < 1 {
 		return nil, nil
 	}
 
 	var (
-		chapter   Chapter
+		chapter   pkgchapter.Chapter
 		title     sql.NullString
 		content   sql.NullString
 		updatedAt sql.NullTime
@@ -97,13 +99,13 @@ func (r *Repository) GetChapter(ctx context.Context, mangaID int64, chapterNumbe
 }
 
 // ValidateChapter checks whether a chapter exists and returns its summary when present.
-func (r *Repository) ValidateChapter(ctx context.Context, mangaID int64, chapterNumber int) (*ChapterSummary, error) {
+func (r *Repository) ValidateChapter(ctx context.Context, mangaID int64, chapterNumber int) (*pkgchapter.ChapterSummary, error) {
 	if chapterNumber < 1 {
 		return nil, nil
 	}
 
 	var (
-		summary   ChapterSummary
+		summary   pkgchapter.ChapterSummary
 		title     sql.NullString
 		updatedAt sql.NullTime
 	)

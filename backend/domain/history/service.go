@@ -7,7 +7,7 @@ import (
 	"time"
 
 	internalmanga "github.com/ngocan-dev/mangahub/manga-backend/internal/manga"
-	internalchapter "github.com/ngocan-dev/mangahub/manga-backend/internal/service/chapter"
+	pkgchapter "github.com/ngocan-dev/mangahub/manga-backend/pkg/models/chapter"
 )
 
 var (
@@ -19,7 +19,7 @@ var (
 
 // ChapterService exposes chapter operations needed by history
 type ChapterService interface {
-	ValidateChapter(ctx context.Context, mangaID int64, chapter int) (*internalchapter.ChapterSummary, error)
+	ValidateChapter(ctx context.Context, mangaID int64, chapter int) (*pkgchapter.ChapterSummary, error)
 }
 
 // LibraryChecker verifies library membership
