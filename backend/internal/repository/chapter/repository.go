@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
-	pkgchapter "github.com/ngocan-dev/mangahub/manga-backend/pkg/models/chapter"
+	pkgchapter "github.com/ngocan-dev/mangahub/manga-backend/pkg/models"
 )
 
 // Repository encapsulates all database access related to chapters.
