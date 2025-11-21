@@ -7,7 +7,9 @@ import (
 	"fmt"
 
 	"github.com/ngocan-dev/mangahub/backend/domain/history"
+	domainlibrary "github.com/ngocan-dev/mangahub/backend/domain/library"
 	internalmanga "github.com/ngocan-dev/mangahub/backend/internal/manga"
+	libraryrepository "github.com/ngocan-dev/mangahub/backend/internal/repository/library"
 )
 
 var (
@@ -35,18 +37,18 @@ type ProgressProvider interface {
 
 // Service coordinates library use cases
 type Service struct {
-	repo         *Repository
+	repo         *libraryrepository.Repository
 	mangaService internalmanga.GetByID
 	progressSvc  ProgressProvider
 }
 
 // NewService constructs library service
-func NewService(repo *Repository, mangaService internalmanga.GetByID, progressSvc ProgressProvider) *Service {
+func NewService(repo *libraryrepository.Repository, mangaService internalmanga.GetByID, progressSvc ProgressProvider) *Service {
 	return &Service{repo: repo, mangaService: mangaService, progressSvc: progressSvc}
 }
 
 // AddToLibrary inserts manga into user's library
-func (s *Service) AddToLibrary(ctx context.Context, userID, mangaID int64, req AddToLibraryRequest) (*AddToLibraryResponse, error) {
+func (s *Service) AddToLibrary(ctx context.Context, userID, mangaID int64, req domainlibrary.AddToLibraryRequest) (*domainlibrary.AddToLibraryResponse, error) {
 	if !validStatuses[req.Status] {
 		return nil, ErrInvalidStatus
 	}
@@ -81,7 +83,7 @@ func (s *Service) AddToLibrary(ctx context.Context, userID, mangaID int64, req A
 		progress, _ = s.progressSvc.GetProgress(ctx, userID, mangaID)
 	}
 
-	return &AddToLibraryResponse{
+	return &domainlibrary.AddToLibraryResponse{
 		Message:       "manga added to library successfully",
 		LibraryStatus: libraryStatus,
 		UserProgress:  progress,
@@ -105,16 +107,16 @@ func (s *Service) RemoveFromLibrary(ctx context.Context, userID, mangaID int64) 
 }
 
 // GetLibrary returns the user's library entries
-func (s *Service) GetLibrary(ctx context.Context, userID int64) (*GetLibraryResponse, error) {
+func (s *Service) GetLibrary(ctx context.Context, userID int64) (*domainlibrary.GetLibraryResponse, error) {
 	entries, err := s.repo.GetLibrary(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
 	}
-	return &GetLibraryResponse{Entries: entries}, nil
+	return &domainlibrary.GetLibraryResponse{Entries: entries}, nil
 }
 
 // UpdateLibraryStatus updates a manga's status for the user
-func (s *Service) UpdateLibraryStatus(ctx context.Context, userID, mangaID int64, req UpdateLibraryStatusRequest) (*LibraryStatus, error) {
+func (s *Service) UpdateLibraryStatus(ctx context.Context, userID, mangaID int64, req domainlibrary.UpdateLibraryStatusRequest) (*domainlibrary.LibraryStatus, error) {
 	if !validStatuses[req.Status] {
 		return nil, ErrInvalidStatus
 	}
@@ -147,7 +149,7 @@ func (s *Service) CheckLibraryExists(ctx context.Context, userID, mangaID int64)
 }
 
 // GetLibraryStatus exposes repository lookup for composition with other domains
-func (s *Service) GetLibraryStatus(ctx context.Context, userID, mangaID int64) (*LibraryStatus, error) {
+func (s *Service) GetLibraryStatus(ctx context.Context, userID, mangaID int64) (*domainlibrary.LibraryStatus, error) {
 	status, err := s.repo.GetLibraryStatus(ctx, userID, mangaID)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)

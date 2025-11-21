@@ -11,7 +11,7 @@ import (
 
 	"github.com/ngocan-dev/mangahub/backend/domain/comment"
 	"github.com/ngocan-dev/mangahub/backend/domain/history"
-	"github.com/ngocan-dev/mangahub/backend/domain/library"
+	domainlibrary "github.com/ngocan-dev/mangahub/backend/domain/library"
 	"github.com/ngocan-dev/mangahub/backend/domain/manga"
 	"github.com/ngocan-dev/mangahub/backend/internal/cache"
 	"github.com/ngocan-dev/mangahub/backend/internal/queue"
@@ -25,7 +25,7 @@ import (
 type MangaHandler struct {
 	DB             *sql.DB
 	mangaService   *manga.Service
-	libraryService *library.Service
+	libraryService *libraryservice.Service
 	historyService *history.Service
 	reviewService  *comment.Service
 	broadcaster    history.Broadcaster
@@ -196,7 +196,7 @@ func (h *MangaHandler) AddToLibrary(c *gin.Context) {
 		return
 	}
 
-	var req library.AddToLibraryRequest
+	var req domainlibrary.AddToLibraryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
@@ -206,13 +206,13 @@ func (h *MangaHandler) AddToLibrary(c *gin.Context) {
 	if err != nil {
 		status := http.StatusInternalServerError
 		switch {
-		case errors.Is(err, library.ErrInvalidStatus):
+		case errors.Is(err, libraryservice.ErrInvalidStatus):
 			status = http.StatusBadRequest
-		case errors.Is(err, library.ErrMangaNotFound):
+		case errors.Is(err, libraryservice.ErrMangaNotFound):
 			status = http.StatusNotFound
-		case errors.Is(err, library.ErrMangaAlreadyInLibrary):
+		case errors.Is(err, libraryservice.ErrMangaAlreadyInLibrary):
 			status = http.StatusConflict
-		case errors.Is(err, library.ErrDatabaseError):
+		case errors.Is(err, libraryservice.ErrDatabaseError):
 			status = http.StatusInternalServerError
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
