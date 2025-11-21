@@ -5,15 +5,14 @@ import (
 	"database/sql"
 	"errors"
 	"log"
-	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/ngocan-dev/mangahub/manga-backend/domain/history"
-	"github.com/ngocan-dev/mangahub/manga-backend/domain/library"
 	"github.com/ngocan-dev/mangahub/manga-backend/domain/manga"
 	chapterrepository "github.com/ngocan-dev/mangahub/manga-backend/internal/repository/chapter"
+	libraryrepository "github.com/ngocan-dev/mangahub/manga-backend/internal/repository/library"
 	chapterservice "github.com/ngocan-dev/mangahub/manga-backend/internal/service/chapter"
 	pb "github.com/ngocan-dev/mangahub/manga-backend/proto/manga"
 )
@@ -33,7 +32,7 @@ func NewServer(db *sql.DB) *Server {
 	chapterService := chapterservice.NewService(chapterRepo)
 	mangaService.SetChapterService(chapterService)
 	historyRepo := history.NewRepository(db)
-	libraryRepo := library.NewRepository(db)
+	libraryRepo := libraryrepository.NewRepository(db)
 	historyService := history.NewService(historyRepo, chapterService, libraryRepo, mangaService)
 
 	return &Server{
@@ -143,11 +142,6 @@ func (s *Server) convertMangaToProto(m *manga.Manga) *pb.Manga {
 	}
 
 	// Format timestamps
-	updatedAt := ""
-	if !m.DateUpdated.IsZero() {
-		updatedAt = m.DateUpdated.Format(time.RFC3339)
-	}
-
 	return &pb.Manga{
 		Id:           m.ID,
 		Name:         m.Name,
@@ -159,7 +153,7 @@ func (s *Server) convertMangaToProto(m *manga.Manga) *pb.Manga {
 		ChapterCount: 0, // Chapter count not included in search results
 		Genres:       genres,
 		CreatedAt:    "",
-		UpdatedAt:    updatedAt,
+		UpdatedAt:    "",
 	}
 }
 
@@ -172,12 +166,6 @@ func (s *Server) convertToProtoManga(m *manga.MangaDetail) *pb.Manga {
 	}
 
 	// Format timestamps
-	createdAt := ""
-	updatedAt := ""
-	if !m.DateUpdated.IsZero() {
-		updatedAt = m.DateUpdated.Format(time.RFC3339)
-	}
-
 	return &pb.Manga{
 		Id:           m.ID,
 		Name:         m.Name,
@@ -188,8 +176,8 @@ func (s *Server) convertToProtoManga(m *manga.MangaDetail) *pb.Manga {
 		Status:       m.Status,
 		ChapterCount: int32(m.ChapterCount),
 		Genres:       genres,
-		CreatedAt:    createdAt,
-		UpdatedAt:    updatedAt,
+		CreatedAt:    "",
+		UpdatedAt:    "",
 	}
 }
 
