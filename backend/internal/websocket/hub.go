@@ -68,8 +68,8 @@ func (h *Hub) Run(ctx context.Context) {
 			// 5. Connection resources are cleaned up
 			h.handleClientDisconnect(client)
 		case message := <-h.broadcast:
-			// Broadcast handled per message type
-			// This channel can be used for general broadcasts if needed
+			// Broadcast raw messages to all connected clients
+			h.broadcastToAll(message)
 		}
 	}
 }
@@ -569,6 +569,24 @@ func (h *Hub) broadcastToRoomExcept(roomID int64, except *Client, msg *Message) 
 		default:
 			// Client send buffer full
 			log.Printf("Client send buffer full, dropping message")
+		}
+	}
+}
+
+// broadcastToAll broadcasts raw data to all connected clients
+func (h *Hub) broadcastToAll(data []byte) {
+	h.mu.RLock()
+	clients := make([]*Client, 0, len(h.clients))
+	for client := range h.clients {
+		clients = append(clients, client)
+	}
+	h.mu.RUnlock()
+
+	for _, client := range clients {
+		select {
+		case client.send <- data:
+		default:
+			log.Printf("Client send buffer full, dropping broadcast message")
 		}
 	}
 }
