@@ -9,9 +9,9 @@ import (
 
 	"github.com/ngocan-dev/mangahub/backend/domain/comment"
 	"github.com/ngocan-dev/mangahub/backend/domain/history"
-	"github.com/ngocan-dev/mangahub/backend/domain/library"
 	"github.com/ngocan-dev/mangahub/backend/domain/manga"
 	chapterrepository "github.com/ngocan-dev/mangahub/backend/internal/repository/chapter"
+	libraryrepository "github.com/ngocan-dev/mangahub/backend/internal/repository/library"
 	chapterservice "github.com/ngocan-dev/mangahub/backend/internal/service/chapter"
 )
 
@@ -55,7 +55,7 @@ func (p *WriteProcessor) processAddToLibrary(ctx context.Context, op WriteOperat
 	currentChapter, _ := op.Data["current_chapter"].(int)
 
 	// Create repository and add to library
-	libraryRepo := library.NewRepository(p.db)
+	libraryRepo := libraryrepository.NewRepository(p.db)
 
 	// Check if already exists
 	exists, err := libraryRepo.CheckLibraryExists(ctx, op.UserID, op.MangaID)
@@ -90,7 +90,7 @@ func (p *WriteProcessor) processUpdateProgress(ctx context.Context, op WriteOper
 	}
 
 	// Create repository and update progress
-	libraryRepo := library.NewRepository(p.db)
+	libraryRepo := libraryrepository.NewRepository(p.db)
 
 	// Check if manga exists in library
 	exists, err := libraryRepo.CheckLibraryExists(ctx, op.UserID, op.MangaID)

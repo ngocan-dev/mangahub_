@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"time"
+
+	domainlibrary "github.com/ngocan-dev/mangahub/backend/domain/library"
 )
 
 // Repository handles persistence for library operations
@@ -76,13 +78,13 @@ VALUES (?, ?, ?, 0, ?, ?, ?)
 }
 
 // GetLibraryStatus fetches user's library status for manga
-func (r *Repository) GetLibraryStatus(ctx context.Context, userID, mangaID int64) (*LibraryStatus, error) {
+func (r *Repository) GetLibraryStatus(ctx context.Context, userID, mangaID int64) (*domainlibrary.LibraryStatus, error) {
 	query := `
 SELECT Status, Started_At, Completed_At
 FROM User_Library
 WHERE User_Id = ? AND Novel_Id = ?
 `
-	var status LibraryStatus
+	var status domainlibrary.LibraryStatus
 	var startedAt, completedAt sql.NullTime
 	err := r.db.QueryRowContext(ctx, query, userID, mangaID).Scan(
 		&status.Status,
@@ -131,7 +133,7 @@ func (r *Repository) RemoveFromLibrary(ctx context.Context, userID, mangaID int6
 }
 
 // UpdateLibraryStatus updates status timestamps and returns new status
-func (r *Repository) UpdateLibraryStatus(ctx context.Context, userID, mangaID int64, status string) (*LibraryStatus, error) {
+func (r *Repository) UpdateLibraryStatus(ctx context.Context, userID, mangaID int64, status string) (*domainlibrary.LibraryStatus, error) {
 	now := time.Now()
 	var startedAt, completedAt *time.Time
 	if status == "reading" || status == "completed" {
@@ -158,7 +160,7 @@ WHERE User_Id = ? AND Novel_Id = ?
 }
 
 // GetLibrary fetches the user's library listing
-func (r *Repository) GetLibrary(ctx context.Context, userID int64) ([]LibraryEntry, error) {
+func (r *Repository) GetLibrary(ctx context.Context, userID int64) ([]domainlibrary.LibraryEntry, error) {
 	query := `
 SELECT ul.Novel_Id, n.Title, n.Image, ul.Status, ul.Started_At, ul.Completed_At, ul.Last_Updated_At
 FROM User_Library ul
@@ -172,9 +174,9 @@ ORDER BY ul.Last_Updated_At DESC
 	}
 	defer rows.Close()
 
-	var entries []LibraryEntry
+	var entries []domainlibrary.LibraryEntry
 	for rows.Next() {
-		var entry LibraryEntry
+		var entry domainlibrary.LibraryEntry
 		var startedAt, completedAt sql.NullTime
 		if err := rows.Scan(&entry.MangaID, &entry.Title, &entry.CoverImage, &entry.Status, &startedAt, &completedAt, &entry.LastUpdated); err != nil {
 			return nil, err
