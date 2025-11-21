@@ -406,7 +406,7 @@ func (r *Repository) SaveReadingStatistics(ctx context.Context, stats *ReadingSt
 		return err
 	}
 
-	_, err := r.db.ExecContext(ctx, `
+        _, err := r.db.ExecContext(ctx, `
         INSERT INTO Reading_Statistics (
             User_Id, Total_Chapters_Read, Total_Manga_Read, Total_Manga_Reading,
             Total_Manga_Planned, Favorite_Genres, Average_Rating, Total_Reading_Time_Hours,
@@ -426,10 +426,11 @@ func (r *Repository) SaveReadingStatistics(ctx context.Context, stats *ReadingSt
             Monthly_Stats = excluded.Monthly_Stats,
             Yearly_Stats = excluded.Yearly_Stats,
             Last_Calculated_At = excluded.Last_Calculated_At
+        )
     `,
-		stats.UserID,
-		stats.TotalChaptersRead,
-		stats.TotalMangaRead,
+                stats.UserID,
+                stats.TotalChaptersRead,
+                stats.TotalMangaRead,
 		stats.TotalMangaReading,
 		stats.TotalMangaPlanned,
 		string(favoriteGenresJSON),
@@ -437,10 +438,10 @@ func (r *Repository) SaveReadingStatistics(ctx context.Context, stats *ReadingSt
 		stats.TotalReadingTimeHours,
 		stats.CurrentStreakDays,
 		stats.LongestStreakDays,
-		string(monthlyStatsJSON),
-		string(yearlyStatsJSON),
-		stats.LastCalculatedAt,
-	)
+                string(monthlyStatsJSON),
+                string(yearlyStatsJSON),
+                stats.LastCalculatedAt,
+        )
 	return err
 }
 
