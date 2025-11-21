@@ -406,31 +406,31 @@ func (r *Repository) SaveReadingStatistics(ctx context.Context, stats *ReadingSt
 		return err
 	}
 
-        _, err := r.db.ExecContext(ctx, `
-        INSERT INTO Reading_Statistics (
-            User_Id, Total_Chapters_Read, Total_Manga_Read, Total_Manga_Reading,
-            Total_Manga_Planned, Favorite_Genres, Average_Rating, Total_Reading_Time_Hours,
-            Current_Streak_Days, Longest_Streak_Days, Monthly_Stats, Yearly_Stats,
-            Last_Calculated_At
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(User_Id) DO UPDATE SET
-            Total_Chapters_Read = excluded.Total_Chapters_Read,
-            Total_Manga_Read = excluded.Total_Manga_Read,
-            Total_Manga_Reading = excluded.Total_Manga_Reading,
-            Total_Manga_Planned = excluded.Total_Manga_Planned,
-            Favorite_Genres = excluded.Favorite_Genres,
-            Average_Rating = excluded.Average_Rating,
-            Total_Reading_Time_Hours = excluded.Total_Reading_Time_Hours,
-            Current_Streak_Days = excluded.Current_Streak_Days,
-            Longest_Streak_Days = excluded.Longest_Streak_Days,
-            Monthly_Stats = excluded.Monthly_Stats,
-            Yearly_Stats = excluded.Yearly_Stats,
-            Last_Calculated_At = excluded.Last_Calculated_At
-        )
-    `,
-                stats.UserID,
-                stats.TotalChaptersRead,
-                stats.TotalMangaRead,
+	_, err = r.db.ExecContext(ctx, `
+INSERT INTO Reading_Statistics (
+    User_Id, Total_Chapters_Read, Total_Manga_Read, Total_Manga_Reading,
+    Total_Manga_Planned, Favorite_Genres, Average_Rating, Total_Reading_Time_Hours,
+    Current_Streak_Days, Longest_Streak_Days, Monthly_Stats, Yearly_Stats,
+    Last_Calculated_At
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(User_Id) DO UPDATE SET
+    Total_Chapters_Read = excluded.Total_Chapters_Read,
+    Total_Manga_Read = excluded.Total_Manga_Read,
+    Total_Manga_Reading = excluded.Total_Manga_Reading,
+    Total_Manga_Planned = excluded.Total_Manga_Planned,
+    Favorite_Genres = excluded.Favorite_Genres,
+    Average_Rating = excluded.Average_Rating,
+    Total_Reading_Time_Hours = excluded.Total_Reading_Time_Hours,
+    Current_Streak_Days = excluded.Current_Streak_Days,
+    Longest_Streak_Days = excluded.Longest_Streak_Days,
+    Monthly_Stats = excluded.Monthly_Stats,
+    Yearly_Stats = excluded.Yearly_Stats,
+    Last_Calculated_At = excluded.Last_Calculated_At
+    )
+`,
+		stats.UserID,
+		stats.TotalChaptersRead,
+		stats.TotalMangaRead,
 		stats.TotalMangaReading,
 		stats.TotalMangaPlanned,
 		string(favoriteGenresJSON),
@@ -438,10 +438,10 @@ func (r *Repository) SaveReadingStatistics(ctx context.Context, stats *ReadingSt
 		stats.TotalReadingTimeHours,
 		stats.CurrentStreakDays,
 		stats.LongestStreakDays,
-                string(monthlyStatsJSON),
-                string(yearlyStatsJSON),
-                stats.LastCalculatedAt,
-        )
+		string(monthlyStatsJSON),
+		string(yearlyStatsJSON),
+		stats.LastCalculatedAt,
+	)
 	return err
 }
 
