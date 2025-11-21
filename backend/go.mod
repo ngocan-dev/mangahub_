@@ -1,4 +1,4 @@
-module github.com/ngocan-dev/mangahub/manga-backend
+module github.com/ngocan-dev/mangahub/backend
 
 go 1.25.1
 

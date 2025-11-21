@@ -10,8 +10,8 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	dbpkg "github.com/ngocan-dev/mangahub/manga-backend/db"
-	"github.com/ngocan-dev/mangahub/manga-backend/internal/tcp"
+	dbpkg "github.com/ngocan-dev/mangahub/backend/db"
+	"github.com/ngocan-dev/mangahub/backend/internal/tcp"
 )
 
 func main() {

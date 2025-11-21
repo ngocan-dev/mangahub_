@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/internal/auth"
+	"github.com/ngocan-dev/mangahub/backend/internal/auth"
 )
 
 // Server represents the UDP notification server

@@ -9,16 +9,16 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/domain/comment"
-	"github.com/ngocan-dev/mangahub/manga-backend/domain/history"
-	"github.com/ngocan-dev/mangahub/manga-backend/domain/library"
-	"github.com/ngocan-dev/mangahub/manga-backend/domain/manga"
-	"github.com/ngocan-dev/mangahub/manga-backend/internal/cache"
-	"github.com/ngocan-dev/mangahub/manga-backend/internal/queue"
-	chapterrepository "github.com/ngocan-dev/mangahub/manga-backend/internal/repository/chapter"
-	libraryrepository "github.com/ngocan-dev/mangahub/manga-backend/internal/repository/library"
-	chapterservice "github.com/ngocan-dev/mangahub/manga-backend/internal/service/chapter"
-	libraryservice "github.com/ngocan-dev/mangahub/manga-backend/internal/service/library"
+	"github.com/ngocan-dev/mangahub/backend/domain/comment"
+	"github.com/ngocan-dev/mangahub/backend/domain/history"
+	"github.com/ngocan-dev/mangahub/backend/domain/library"
+	"github.com/ngocan-dev/mangahub/backend/domain/manga"
+	"github.com/ngocan-dev/mangahub/backend/internal/cache"
+	"github.com/ngocan-dev/mangahub/backend/internal/queue"
+	chapterrepository "github.com/ngocan-dev/mangahub/backend/internal/repository/chapter"
+	libraryrepository "github.com/ngocan-dev/mangahub/backend/internal/repository/library"
+	chapterservice "github.com/ngocan-dev/mangahub/backend/internal/service/chapter"
+	libraryservice "github.com/ngocan-dev/mangahub/backend/internal/service/library"
 )
 
 // MangaHandler handles manga-related HTTP endpoints.

@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/internal/auth"
-	"github.com/ngocan-dev/mangahub/manga-backend/internal/security"
+	"github.com/ngocan-dev/mangahub/backend/internal/auth"
+	"github.com/ngocan-dev/mangahub/backend/internal/security"
 )
 
 // Hub maintains the set of active clients and broadcasts messages to clients

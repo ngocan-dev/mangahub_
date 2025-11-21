@@ -15,11 +15,11 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	dbpkg "github.com/ngocan-dev/mangahub/manga-backend/db"
-	grpcserver "github.com/ngocan-dev/mangahub/manga-backend/internal/grpc"
-	"github.com/ngocan-dev/mangahub/manga-backend/internal/queue"
-	"github.com/ngocan-dev/mangahub/manga-backend/internal/tcp"
-	pb "github.com/ngocan-dev/mangahub/manga-backend/proto/manga"
+	dbpkg "github.com/ngocan-dev/mangahub/backend/db"
+	grpcserver "github.com/ngocan-dev/mangahub/backend/internal/grpc"
+	"github.com/ngocan-dev/mangahub/backend/internal/queue"
+	"github.com/ngocan-dev/mangahub/backend/internal/tcp"
+	pb "github.com/ngocan-dev/mangahub/backend/proto/manga"
 )
 
 func startTCPServerWithRestart(ctx context.Context, server *tcp.Server, address string, maxClients int, backoff time.Duration) {

@@ -11,14 +11,14 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "modernc.org/sqlite" // Dùng driver giống migration
 
-	dbpkg "github.com/ngocan-dev/mangahub/manga-backend/db"
-	"github.com/ngocan-dev/mangahub/manga-backend/domain/friend"
-	"github.com/ngocan-dev/mangahub/manga-backend/internal/cache"
-	"github.com/ngocan-dev/mangahub/manga-backend/internal/http/handlers"
-	"github.com/ngocan-dev/mangahub/manga-backend/internal/middleware"
-	"github.com/ngocan-dev/mangahub/manga-backend/internal/queue"
-	"github.com/ngocan-dev/mangahub/manga-backend/internal/tcp"
-	"github.com/ngocan-dev/mangahub/manga-backend/internal/udp"
+	dbpkg "github.com/ngocan-dev/mangahub/backend/db"
+	"github.com/ngocan-dev/mangahub/backend/domain/friend"
+	"github.com/ngocan-dev/mangahub/backend/internal/cache"
+	"github.com/ngocan-dev/mangahub/backend/internal/http/handlers"
+	"github.com/ngocan-dev/mangahub/backend/internal/middleware"
+	"github.com/ngocan-dev/mangahub/backend/internal/queue"
+	"github.com/ngocan-dev/mangahub/backend/internal/tcp"
+	"github.com/ngocan-dev/mangahub/backend/internal/udp"
 )
 
 // user handler tối giản

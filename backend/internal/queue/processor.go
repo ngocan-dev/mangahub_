@@ -7,12 +7,12 @@ import (
 	"log"
 	"time"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/domain/comment"
-	"github.com/ngocan-dev/mangahub/manga-backend/domain/history"
-	"github.com/ngocan-dev/mangahub/manga-backend/domain/library"
-	"github.com/ngocan-dev/mangahub/manga-backend/domain/manga"
-	chapterrepository "github.com/ngocan-dev/mangahub/manga-backend/internal/repository/chapter"
-	chapterservice "github.com/ngocan-dev/mangahub/manga-backend/internal/service/chapter"
+	"github.com/ngocan-dev/mangahub/backend/domain/comment"
+	"github.com/ngocan-dev/mangahub/backend/domain/history"
+	"github.com/ngocan-dev/mangahub/backend/domain/library"
+	"github.com/ngocan-dev/mangahub/backend/domain/manga"
+	chapterrepository "github.com/ngocan-dev/mangahub/backend/internal/repository/chapter"
+	chapterservice "github.com/ngocan-dev/mangahub/backend/internal/service/chapter"
 )
 
 // WriteProcessor processes queued write operations

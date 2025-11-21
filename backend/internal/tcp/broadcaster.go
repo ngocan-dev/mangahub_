@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/internal/queue"
+	"github.com/ngocan-dev/mangahub/backend/internal/queue"
 )
 
 // ServerBroadcaster implements the Broadcaster interface for the manga service

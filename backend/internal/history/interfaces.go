@@ -3,7 +3,7 @@ package history
 import (
 	"context"
 
-	domainhistory "github.com/ngocan-dev/mangahub/manga-backend/domain/history"
+	domainhistory "github.com/ngocan-dev/mangahub/backend/domain/history"
 )
 
 // UserProgress exposes the canonical history progress model to other domains.

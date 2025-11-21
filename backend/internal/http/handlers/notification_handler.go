@@ -9,11 +9,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/domain/manga"
-	"github.com/ngocan-dev/mangahub/manga-backend/internal/auth"
-	chapterrepository "github.com/ngocan-dev/mangahub/manga-backend/internal/repository/chapter"
-	chapterservice "github.com/ngocan-dev/mangahub/manga-backend/internal/service/chapter"
-	"github.com/ngocan-dev/mangahub/manga-backend/internal/udp"
+	"github.com/ngocan-dev/mangahub/backend/domain/manga"
+	"github.com/ngocan-dev/mangahub/backend/internal/auth"
+	chapterrepository "github.com/ngocan-dev/mangahub/backend/internal/repository/chapter"
+	chapterservice "github.com/ngocan-dev/mangahub/backend/internal/service/chapter"
+	"github.com/ngocan-dev/mangahub/backend/internal/udp"
 )
 
 type NotificationHandler struct {

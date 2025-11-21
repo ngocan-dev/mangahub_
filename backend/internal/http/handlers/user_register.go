@@ -7,7 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/domain/user"
+	"github.com/ngocan-dev/mangahub/backend/domain/user"
 )
 
 type UserHandler struct {

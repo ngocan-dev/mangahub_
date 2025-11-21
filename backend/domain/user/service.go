@@ -10,8 +10,8 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/internal/auth"
-	"github.com/ngocan-dev/mangahub/manga-backend/internal/security"
+	"github.com/ngocan-dev/mangahub/backend/internal/auth"
+	"github.com/ngocan-dev/mangahub/backend/internal/security"
 )
 
 var (

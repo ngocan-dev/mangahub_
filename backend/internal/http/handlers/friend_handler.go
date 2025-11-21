@@ -8,7 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/domain/friend"
+	"github.com/ngocan-dev/mangahub/backend/domain/friend"
 )
 
 // FriendHandler manages friend workflows (search, request, accept)

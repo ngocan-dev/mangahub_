@@ -3,8 +3,8 @@ package chapter
 import (
 	"context"
 
-	repository "github.com/ngocan-dev/mangahub/manga-backend/internal/repository/chapter"
-	pkgchapter "github.com/ngocan-dev/mangahub/manga-backend/pkg/models"
+	repository "github.com/ngocan-dev/mangahub/backend/internal/repository/chapter"
+	pkgchapter "github.com/ngocan-dev/mangahub/backend/pkg/models"
 )
 
 // Service exposes higher-level chapter use cases.
