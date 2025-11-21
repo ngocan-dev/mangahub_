@@ -3,7 +3,7 @@ package manga
 import (
 	"github.com/ngocan-dev/mangahub/manga-backend/domain/history"
 	"github.com/ngocan-dev/mangahub/manga-backend/domain/library"
-	pkgchapter "github.com/ngocan-dev/mangahub/manga-backend/pkg/models/chapter"
+	pkgchapter "github.com/ngocan-dev/mangahub/manga-backend/pkg/models"
 )
 
 // Manga represents a manga/novel entity

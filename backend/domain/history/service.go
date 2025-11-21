@@ -7,7 +7,7 @@ import (
 	"time"
 
 	internalmanga "github.com/ngocan-dev/mangahub/manga-backend/internal/manga"
-	pkgchapter "github.com/ngocan-dev/mangahub/manga-backend/pkg/models/chapter"
+	pkgchapter "github.com/ngocan-dev/mangahub/manga-backend/pkg/models"
 )
 
 var (
