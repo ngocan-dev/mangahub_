@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ngocan-dev/mangahub/manga-backend/domain/manga"
 	"github.com/ngocan-dev/mangahub/manga-backend/domain/rating"
-	internalmanga "github.com/ngocan-dev/mangahub/manga-backend/internal/manga"
 	"github.com/ngocan-dev/mangahub/manga-backend/internal/security"
 )
 
@@ -25,15 +25,20 @@ type RatingSetter interface {
 	SetRating(ctx context.Context, userID, mangaID int64, rating int) (*rating.UserRating, error)
 }
 
+// MangaGetter retrieves manga information
+type MangaGetter interface {
+	GetByID(ctx context.Context, mangaID int64) (*manga.Manga, error)
+}
+
 // Service handles review use cases
 type Service struct {
 	repo          *Repository
-	mangaService  internalmanga.GetByID
+	mangaService  MangaGetter
 	ratingService RatingSetter
 }
 
 // NewService builds a review service
-func NewService(repo *Repository, mangaService internalmanga.GetByID, ratingService RatingSetter) *Service {
+func NewService(repo *Repository, mangaService MangaGetter, ratingService RatingSetter) *Service {
 	return &Service{repo: repo, mangaService: mangaService, ratingService: ratingService}
 }
 
