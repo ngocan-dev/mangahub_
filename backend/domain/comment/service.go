@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/domain/manga"
 	"github.com/ngocan-dev/mangahub/manga-backend/domain/rating"
 	"github.com/ngocan-dev/mangahub/manga-backend/internal/security"
 )
@@ -27,7 +26,7 @@ type RatingSetter interface {
 
 // MangaGetter retrieves manga information
 type MangaGetter interface {
-	GetByID(ctx context.Context, mangaID int64) (*manga.Manga, error)
+	Exists(ctx context.Context, mangaID int64) (bool, error)
 }
 
 // Service handles review use cases
@@ -63,11 +62,11 @@ func (s *Service) CreateReview(ctx context.Context, userID, mangaID int64, req C
 
 	sanitized := security.SanitizeReviewContent(req.Content)
 
-	manga, err := s.mangaService.GetByID(ctx, mangaID)
+	mangaExists, err := s.mangaService.Exists(ctx, mangaID)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
 	}
-	if manga == nil {
+	if !mangaExists {
 		return nil, ErrMangaNotFound
 	}
 

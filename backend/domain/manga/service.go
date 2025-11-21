@@ -205,6 +205,15 @@ func (s *Service) GetByID(ctx context.Context, mangaID int64) (*Manga, error) {
 	return manga, nil
 }
 
+// Exists reports whether a manga exists by ID
+func (s *Service) Exists(ctx context.Context, mangaID int64) (bool, error) {
+	manga, err := s.repo.GetByID(ctx, mangaID)
+	if err != nil {
+		return false, fmt.Errorf("%w: %v", ErrDatabaseError, err)
+	}
+	return manga != nil, nil
+}
+
 // GetDetails retrieves detailed manga information
 func (s *Service) GetDetails(ctx context.Context, mangaID int64, userID *int64) (*MangaDetail, error) {
 	dbHealthy := s.IsDBHealthy()
