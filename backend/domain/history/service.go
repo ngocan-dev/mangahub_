@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	internalmanga "github.com/ngocan-dev/mangahub/backend/internal/manga"
 	pkgchapter "github.com/ngocan-dev/mangahub/backend/pkg/models"
 )
 
@@ -32,22 +31,27 @@ type Broadcaster interface {
 	BroadcastProgress(ctx context.Context, userID, mangaID int64, chapter int, chapterID *int64) error
 }
 
+// MangaChecker verifies manga existence
+type MangaChecker interface {
+	Exists(ctx context.Context, mangaID int64) (bool, error)
+}
+
 // Service manages history use cases
 type Service struct {
 	repo           *Repository
 	chapterService ChapterService
 	libraryChecker LibraryChecker
 	broadcaster    Broadcaster
-	mangaService   internalmanga.GetByID
+	mangaChecker   MangaChecker
 }
 
 // NewService builds history service
-func NewService(repo *Repository, chapterSvc ChapterService, libraryChecker LibraryChecker, mangaService internalmanga.GetByID) *Service {
+func NewService(repo *Repository, chapterSvc ChapterService, libraryChecker LibraryChecker, mangaChecker MangaChecker) *Service {
 	return &Service{
 		repo:           repo,
 		chapterService: chapterSvc,
 		libraryChecker: libraryChecker,
-		mangaService:   mangaService,
+		mangaChecker:   mangaChecker,
 	}
 }
 
@@ -80,19 +84,23 @@ func (s *Service) UpdateProgress(ctx context.Context, userID, mangaID int64, req
 		return nil, ErrInvalidChapterNumber
 	}
 
-	manga, err := s.mangaService.GetByID(ctx, mangaID)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
-	}
-	if manga == nil {
-		return nil, ErrMangaNotFound
+	if s.mangaChecker == nil {
+		return nil, fmt.Errorf("%w: manga checker not configured", ErrDatabaseError)
 	}
 
-	exists, err := s.libraryChecker.CheckLibraryExists(ctx, userID, mangaID)
+	exists, err := s.mangaChecker.Exists(ctx, mangaID)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
 	}
 	if !exists {
+		return nil, ErrMangaNotFound
+	}
+
+	inLibrary, err := s.libraryChecker.CheckLibraryExists(ctx, userID, mangaID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
+	}
+	if !inLibrary {
 		return nil, ErrMangaNotInLibrary
 	}
 

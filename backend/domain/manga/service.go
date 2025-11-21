@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/ngocan-dev/mangahub/backend/internal/queue"
 	pkgchapter "github.com/ngocan-dev/mangahub/backend/pkg/models"
 )
 
@@ -30,7 +29,7 @@ type Service struct {
 	repo           *Repository
 	cache          MangaCacher
 	dbHealth       DBHealthChecker
-	writeQueue     *queue.WriteQueue
+	writeQueue     WriteQueue
 	chapterService ChapterService
 }
 
@@ -48,6 +47,11 @@ type MangaCacher interface {
 // DBHealthChecker exposes database status
 type DBHealthChecker interface {
 	IsHealthy() bool
+}
+
+// WriteQueue defines the queuing operations used by the manga service
+type WriteQueue interface {
+	Enqueue(opType string, userID, mangaID int64, data map[string]interface{}) error
 }
 
 // NewService creates a manga service
@@ -68,7 +72,7 @@ func (s *Service) SetDBHealth(checker DBHealthChecker) {
 }
 
 // SetWriteQueue sets the write queue used for offline write queuing
-func (s *Service) SetWriteQueue(queue *queue.WriteQueue) {
+func (s *Service) SetWriteQueue(queue WriteQueue) {
 	s.writeQueue = queue
 }
 
