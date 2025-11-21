@@ -75,7 +75,7 @@ func buildMangaHandler(conn *sql.DB, mangaService *manga.Service) *MangaHandler 
 	historyService := history.NewService(historyRepo, chapterService, libraryRepo, mangaService)
 	libraryService := libraryservice.NewService(libraryRepo, mangaService, historyService)
 	favoriteService := favorite.NewService(favoriteRepo, libraryService)
-	commentService := comment.NewService(commentRepo, mangaService, historyService)
+	commentService := comment.NewService(commentRepo, mangaService, nil)
 
 	return &MangaHandler{
 		mangaService:    mangaService,
