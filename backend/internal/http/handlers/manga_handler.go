@@ -1,0 +1,384 @@
+package handlers
+
+import (
+	"database/sql"
+	"errors"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+
+	"github.com/ngocan-dev/mangahub/manga-backend/domain/comment"
+	"github.com/ngocan-dev/mangahub/manga-backend/domain/history"
+	"github.com/ngocan-dev/mangahub/manga-backend/domain/library"
+	"github.com/ngocan-dev/mangahub/manga-backend/domain/manga"
+	"github.com/ngocan-dev/mangahub/manga-backend/internal/cache"
+	"github.com/ngocan-dev/mangahub/manga-backend/internal/queue"
+	chapterrepository "github.com/ngocan-dev/mangahub/manga-backend/internal/repository/chapter"
+	libraryrepository "github.com/ngocan-dev/mangahub/manga-backend/internal/repository/library"
+	chapterservice "github.com/ngocan-dev/mangahub/manga-backend/internal/service/chapter"
+	libraryservice "github.com/ngocan-dev/mangahub/manga-backend/internal/service/library"
+)
+
+// MangaHandler handles manga-related HTTP endpoints.
+type MangaHandler struct {
+	DB             *sql.DB
+	mangaService   *manga.Service
+	libraryService *library.Service
+	historyService *history.Service
+	reviewService  *comment.Service
+	broadcaster    history.Broadcaster
+	dbHealth       manga.DBHealthChecker
+	writeQueue     *queue.WriteQueue
+}
+
+// GetMangaService builds a manga service with optional cache support.
+func GetMangaService(db *sql.DB, mangaCache *cache.MangaCache) *manga.Service {
+	mangaService := manga.NewService(db)
+	if mangaCache != nil {
+		mangaService.SetCache(mangaCache)
+	}
+
+	chapterRepo := chapterrepository.NewRepository(db)
+	chapterSvc := chapterservice.NewService(chapterRepo)
+	mangaService.SetChapterService(chapterSvc)
+
+	return mangaService
+}
+
+// NewMangaHandlerWithService constructs a MangaHandler using the provided manga service.
+func NewMangaHandlerWithService(db *sql.DB, mangaService *manga.Service) *MangaHandler {
+	chapterRepo := chapterrepository.NewRepository(db)
+	chapterSvc := chapterservice.NewService(chapterRepo)
+	mangaService.SetChapterService(chapterSvc)
+
+	libraryRepo := libraryrepository.NewRepository(db)
+	librarySvc := libraryservice.NewService(libraryRepo, mangaService, nil)
+
+	historyRepo := history.NewRepository(db)
+	historySvc := history.NewService(historyRepo, chapterSvc, librarySvc, mangaService)
+
+	reviewRepo := comment.NewRepository(db)
+	reviewSvc := comment.NewService(reviewRepo, mangaService, nil)
+
+	return &MangaHandler{
+		DB:             db,
+		mangaService:   mangaService,
+		libraryService: librarySvc,
+		historyService: historySvc,
+		reviewService:  reviewSvc,
+	}
+}
+
+// SetBroadcaster configures the broadcaster for history updates.
+func (h *MangaHandler) SetBroadcaster(b history.Broadcaster) {
+	h.broadcaster = b
+	if h.historyService != nil {
+		h.historyService.SetBroadcaster(b)
+	}
+}
+
+// SetDBHealth sets the DB health checker on the manga service.
+func (h *MangaHandler) SetDBHealth(checker manga.DBHealthChecker) {
+	h.dbHealth = checker
+	if h.mangaService != nil {
+		h.mangaService.SetDBHealth(checker)
+	}
+}
+
+// SetWriteQueue attaches a write queue to the manga service.
+func (h *MangaHandler) SetWriteQueue(q *queue.WriteQueue) {
+	h.writeQueue = q
+	if h.mangaService != nil {
+		h.mangaService.SetWriteQueue(q)
+	}
+}
+
+// GetPopularManga returns the popular manga list, leveraging cache when available.
+func (h *MangaHandler) GetPopularManga(c *gin.Context) {
+	limitParam := c.DefaultQuery("limit", "10")
+	limit, _ := strconv.Atoi(limitParam)
+
+	popular, err := h.mangaService.GetPopularManga(c.Request.Context(), limit)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, manga.ErrDatabaseUnavailable) {
+			status = http.StatusServiceUnavailable
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, popular)
+}
+
+// Search finds manga using query parameters.
+func (h *MangaHandler) Search(c *gin.Context) {
+	var req manga.SearchRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid search parameters"})
+		return
+	}
+
+	// Support comma-separated genres
+	if len(req.Genres) == 1 && strings.Contains(req.Genres[0], ",") {
+		req.Genres = strings.Split(req.Genres[0], ",")
+	}
+
+	resp, err := h.mangaService.Search(c.Request.Context(), req)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, manga.ErrDatabaseUnavailable) {
+			status = http.StatusServiceUnavailable
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// GetDetails retrieves manga detail information.
+func (h *MangaHandler) GetDetails(c *gin.Context) {
+	idParam := c.Param("id")
+	mangaID, err := strconv.ParseInt(idParam, 10, 64)
+	if err != nil || mangaID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid manga id"})
+		return
+	}
+
+	var userID *int64
+	if val, exists := c.Get("user_id"); exists {
+		switch v := val.(type) {
+		case int64:
+			userID = &v
+		case string:
+			if parsed, parseErr := strconv.ParseInt(v, 10, 64); parseErr == nil {
+				userID = &parsed
+			}
+		}
+	}
+
+	detail, err := h.mangaService.GetDetails(c.Request.Context(), mangaID, userID)
+	if err != nil {
+		status := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, manga.ErrMangaNotFound):
+			status = http.StatusNotFound
+		case errors.Is(err, manga.ErrDatabaseUnavailable):
+			status = http.StatusServiceUnavailable
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	if userID != nil {
+		progress, _ := h.historyService.GetProgress(c.Request.Context(), *userID, mangaID)
+		detail.UserProgress = progress
+		status, _ := h.libraryService.GetLibraryStatus(c.Request.Context(), *userID, mangaID)
+		detail.LibraryStatus = status
+	}
+
+	c.JSON(http.StatusOK, detail)
+}
+
+// AddToLibrary adds a manga to the authenticated user's library.
+func (h *MangaHandler) AddToLibrary(c *gin.Context) {
+	userID, ok := RequireUserID(c)
+	if !ok {
+		return
+	}
+
+	mangaID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || mangaID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid manga id"})
+		return
+	}
+
+	var req library.AddToLibraryRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+
+	resp, err := h.libraryService.AddToLibrary(c.Request.Context(), userID, mangaID, req)
+	if err != nil {
+		status := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, library.ErrInvalidStatus):
+			status = http.StatusBadRequest
+		case errors.Is(err, library.ErrMangaNotFound):
+			status = http.StatusNotFound
+		case errors.Is(err, library.ErrMangaAlreadyInLibrary):
+			status = http.StatusConflict
+		case errors.Is(err, library.ErrDatabaseError):
+			status = http.StatusInternalServerError
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, resp)
+}
+
+// UpdateProgress updates reading progress for a manga.
+func (h *MangaHandler) UpdateProgress(c *gin.Context) {
+	userID, ok := RequireUserID(c)
+	if !ok {
+		return
+	}
+
+	mangaID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || mangaID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid manga id"})
+		return
+	}
+
+	var req history.UpdateProgressRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "current_chapter is required"})
+		return
+	}
+
+	resp, err := h.historyService.UpdateProgress(c.Request.Context(), userID, mangaID, req)
+	if err != nil {
+		status := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, history.ErrInvalidChapterNumber):
+			status = http.StatusBadRequest
+		case errors.Is(err, history.ErrMangaNotFound):
+			status = http.StatusNotFound
+		case errors.Is(err, history.ErrMangaNotInLibrary):
+			status = http.StatusForbidden
+		case errors.Is(err, history.ErrDatabaseError):
+			status = http.StatusInternalServerError
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// CreateReview creates a review for a manga.
+func (h *MangaHandler) CreateReview(c *gin.Context) {
+	userID, ok := RequireUserID(c)
+	if !ok {
+		return
+	}
+
+	mangaID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || mangaID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid manga id"})
+		return
+	}
+
+	var req comment.CreateReviewRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid review payload"})
+		return
+	}
+
+	resp, err := h.reviewService.CreateReview(c.Request.Context(), userID, mangaID, req)
+	if err != nil {
+		status := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, comment.ErrInvalidReviewRating), errors.Is(err, comment.ErrReviewContentTooShort), errors.Is(err, comment.ErrReviewContentTooLong):
+			status = http.StatusBadRequest
+		case errors.Is(err, comment.ErrMangaNotFound):
+			status = http.StatusNotFound
+		case errors.Is(err, comment.ErrMangaNotCompleted):
+			status = http.StatusForbidden
+		case errors.Is(err, comment.ErrReviewAlreadyExists):
+			status = http.StatusConflict
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, resp)
+}
+
+// GetReviews returns reviews for a manga.
+func (h *MangaHandler) GetReviews(c *gin.Context) {
+	mangaID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || mangaID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid manga id"})
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	sortBy := c.DefaultQuery("sort_by", "recent")
+
+	resp, err := h.reviewService.GetReviews(c.Request.Context(), mangaID, page, limit, sortBy)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, comment.ErrDatabaseError) {
+			status = http.StatusInternalServerError
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// GetFriendsActivityFeed lists friend activities for the authenticated user.
+func (h *MangaHandler) GetFriendsActivityFeed(c *gin.Context) {
+	userID, ok := RequireUserID(c)
+	if !ok {
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+
+	resp, err := h.historyService.GetFriendsActivityFeed(c.Request.Context(), userID, page, limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// GetReadingStatistics returns reading statistics for the authenticated user.
+func (h *MangaHandler) GetReadingStatistics(c *gin.Context) {
+	userID, ok := RequireUserID(c)
+	if !ok {
+		return
+	}
+
+	force := c.Query("force") == "true"
+	stats, err := h.historyService.GetReadingStatistics(c.Request.Context(), userID, force)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, stats)
+}
+
+// GetReadingAnalytics filters reading statistics with query params.
+func (h *MangaHandler) GetReadingAnalytics(c *gin.Context) {
+	userID, ok := RequireUserID(c)
+	if !ok {
+		return
+	}
+
+	var req history.ReadingAnalyticsRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid analytics parameters"})
+		return
+	}
+
+	stats, err := h.historyService.GetReadingAnalytics(c.Request.Context(), userID, req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, stats)
+}
