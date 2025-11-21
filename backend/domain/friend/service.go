@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/internal/security"
+	"github.com/ngocan-dev/mangahub/backend/internal/security"
 )
 
 var (

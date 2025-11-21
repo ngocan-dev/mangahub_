@@ -9,7 +9,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/internal/auth"
+	"github.com/ngocan-dev/mangahub/backend/internal/auth"
 )
 
 func setupTestDB(t *testing.T) *sql.DB {

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	internalmanga "github.com/ngocan-dev/mangahub/manga-backend/internal/manga"
-	pkgchapter "github.com/ngocan-dev/mangahub/manga-backend/pkg/models"
+	internalmanga "github.com/ngocan-dev/mangahub/backend/internal/manga"
+	pkgchapter "github.com/ngocan-dev/mangahub/backend/pkg/models"
 )
 
 var (

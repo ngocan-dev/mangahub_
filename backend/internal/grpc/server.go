@@ -9,12 +9,12 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/domain/history"
-	"github.com/ngocan-dev/mangahub/manga-backend/domain/manga"
-	chapterrepository "github.com/ngocan-dev/mangahub/manga-backend/internal/repository/chapter"
-	libraryrepository "github.com/ngocan-dev/mangahub/manga-backend/internal/repository/library"
-	chapterservice "github.com/ngocan-dev/mangahub/manga-backend/internal/service/chapter"
-	pb "github.com/ngocan-dev/mangahub/manga-backend/proto/manga"
+	"github.com/ngocan-dev/mangahub/backend/domain/history"
+	"github.com/ngocan-dev/mangahub/backend/domain/manga"
+	chapterrepository "github.com/ngocan-dev/mangahub/backend/internal/repository/chapter"
+	libraryrepository "github.com/ngocan-dev/mangahub/backend/internal/repository/library"
+	chapterservice "github.com/ngocan-dev/mangahub/backend/internal/service/chapter"
+	pb "github.com/ngocan-dev/mangahub/backend/proto/manga"
 )
 
 // Server implements the MangaService gRPC server

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/domain/manga"
+	"github.com/ngocan-dev/mangahub/backend/domain/manga"
 )
 
 const (

@@ -7,8 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/ngocan-dev/mangahub/manga-backend/domain/user"
-	"github.com/ngocan-dev/mangahub/manga-backend/internal/auth"
+	"github.com/ngocan-dev/mangahub/backend/domain/user"
+	"github.com/ngocan-dev/mangahub/backend/internal/auth"
 )
 
 type AuthHandler struct {
