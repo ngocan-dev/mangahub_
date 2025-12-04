@@ -39,10 +39,10 @@ func runLogin(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	// Nhập password (ẩn)
+	// Nhập password
 	fmt.Print("Password: ")
 	passwordBytes, err := term.ReadPassword(int(syscall.Stdin))
-	fmt.Println() // Xuống dòng sau khi nhập password
+	fmt.Println()
 	if err != nil {
 		fmt.Printf("❌ Lỗi đọc password: %v\n", err)
 		os.Exit(1)
