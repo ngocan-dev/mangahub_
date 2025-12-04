@@ -55,7 +55,7 @@ func (c *TCPClient) Connect() error {
 	// Kết nối TCP
 	conn, err := net.DialTimeout("tcp", c.address, 10*time.Second)
 	if err != nil {
-		return fmt.Errorf("không thể kết nối: %w", err)
+		return fmt.Errorf("Can not connect: %w", err)
 	}
 	c.conn = conn
 	c.running = true
@@ -70,24 +70,25 @@ func (c *TCPClient) Connect() error {
 		},
 	}
 
+	// nhận xác thực
 	if err := c.sendMessage(authMsg); err != nil {
 		conn.Close()
-		return fmt.Errorf("không thể gửi xác thực: %w", err)
+		return fmt.Errorf("cannot send auth: %w", err)
 	}
 
 	// Đọc phản hồi xác thực
 	response, err := c.readMessage()
 	if err != nil {
 		conn.Close()
-		return fmt.Errorf("không nhận được xác thực: %w", err)
+		return fmt.Errorf("cannot receive auth response: %w", err)
 	}
 
 	if response.Type != "auth_response" {
 		conn.Close()
-		return fmt.Errorf("xác thực thất bại: %s", response.Error)
+		return fmt.Errorf("auth failed: %s", response.Error)
 	}
 
-	fmt.Println("✓ Đã kết nối và xác thực TCP")
+	fmt.Println("✓ Connected and authenticated TCP")
 
 	// Bắt đầu nhận messages
 	go c.receiveMessages()

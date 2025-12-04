@@ -16,19 +16,19 @@ type HTTPClient struct {
 	client  *http.Client
 }
 
-// LoginRequest là request cho đăng nhập
+// LoginRequest
 type LoginRequest struct {
 	UsernameOrEmail string `json:"username_or_email"`
 	Password        string `json:"password"`
 }
 
-// LoginResponse là response từ đăng nhập
+// LoginResponse
 type LoginResponse struct {
 	Token string      `json:"token"`
 	User  interface{} `json:"user"`
 }
 
-// MangaSearchResponse là response tìm kiếm manga
+// MangaSearchResponse
 type MangaSearchResponse struct {
 	Results []Manga `json:"results"`
 	Total   int     `json:"total"`
@@ -37,7 +37,7 @@ type MangaSearchResponse struct {
 	Pages   int     `json:"pages"`
 }
 
-// Manga là thông tin manga
+// Manga
 type Manga struct {
 	ID          int64   `json:"id"`
 	Name        string  `json:"name"`
@@ -50,7 +50,7 @@ type Manga struct {
 	RatingPoint float64 `json:"rating_point"`
 }
 
-// MangaDetail là thông tin chi tiết manga
+// MangaDetail
 type MangaDetail struct {
 	Manga
 	ChapterCount  int         `json:"chapter_count"`
@@ -59,7 +59,7 @@ type MangaDetail struct {
 	UserProgress  interface{} `json:"user_progress,omitempty"`
 }
 
-// Chapter là thông tin chapter
+// Chapter
 type Chapter struct {
 	ID         int64  `json:"id"`
 	ChapterNum int    `json:"chapter_num"`
@@ -67,7 +67,7 @@ type Chapter struct {
 	ReleasedAt string `json:"released_at"`
 }
 
-// NewHTTPClient tạo HTTP client mới
+// NewHTTPClient
 func NewHTTPClient(baseURL string) *HTTPClient {
 	return &HTTPClient{
 		baseURL: baseURL,
@@ -214,25 +214,25 @@ func (c *HTTPClient) doRequest(req *http.Request, result interface{}) error {
 
 	resp, err := c.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("request thất bại: %w", err)
+		return fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// Đọc response body
+	// Read response body
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("không đọc được response: %w", err)
+		return fmt.Errorf("cannot read response: %w", err)
 	}
 
 	// Kiểm tra status code
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("lỗi HTTP %d: %s", resp.StatusCode, string(bodyBytes))
+		return fmt.Errorf("HTTP error %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
-	// Parse JSON nếu cần
+	// Parse JSON
 	if result != nil {
 		if err := json.Unmarshal(bodyBytes, result); err != nil {
-			return fmt.Errorf("không parse được JSON: %w", err)
+			return fmt.Errorf("cannot parse JSON: %w", err)
 		}
 	}
 
@@ -244,7 +244,7 @@ func (c *HTTPClient) GetToken() string {
 	return c.token
 }
 
-// IsAuthenticated kiểm tra đã đăng nhập chưa
+// IsAuthenticated, check xác thực
 func (c *HTTPClient) IsAuthenticated() bool {
 	return c.token != ""
 }
