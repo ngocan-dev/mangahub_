@@ -21,6 +21,8 @@ var (
 	udpServerAddr string
 	novelIDs      []int64
 	allNovels     bool
+	token         string
+	userID        int64
 )
 
 func init() {
@@ -29,19 +31,22 @@ func init() {
 	notificationsCmd.Flags().StringVar(&udpServerAddr, "udp-server", "localhost:9091", "Địa chỉ UDP server")
 	notificationsCmd.Flags().Int64SliceVar(&novelIDs, "novels", []int64{}, "Danh sách ID manga muốn nhận thông báo (để trống = tất cả)")
 	notificationsCmd.Flags().BoolVar(&allNovels, "all", true, "Nhận thông báo từ tất cả manga")
+	notificationsCmd.Flags().StringVar(&token, "token", "", "JWT token (bắt buộc)")
+	notificationsCmd.Flags().Int64Var(&userID, "user-id", 0, "User ID (bắt buộc)")
+
+	notificationsCmd.MarkFlagRequired("token")
+	notificationsCmd.MarkFlagRequired("user-id")
 }
 
 func runNotifications(cmd *cobra.Command, args []string) {
-	// Lấy token và user ID từ config
-	token := getStoredToken()
+	// Kiểm tra token và userID
 	if token == "" {
-		fmt.Println("❌ Chưa đăng nhập. Vui lòng chạy: mangahub login")
+		fmt.Println("❌ Vui lòng cung cấp token với --token")
 		os.Exit(1)
 	}
 
-	userID := getStoredUserID()
 	if userID == 0 {
-		fmt.Println("❌ Không tìm thấy user ID")
+		fmt.Println("❌ Vui lòng cung cấp user ID với --user-id")
 		os.Exit(1)
 	}
 
