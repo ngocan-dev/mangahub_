@@ -1,42 +1,17 @@
 package config
 
-import (
-	"os"
-	"path/filepath"
-
-	"gopkg.in/yaml.v3"
-)
-
+// Config represents the MangaHub CLI configuration.
 type Config struct {
-	Server struct {
-		Host          string `yaml:"host"`
-		HTTPPort      int    `yaml:"http_port"`
-		TCPPort       int    `yaml:"tcp_port"`
-		UDPPort       int    `yaml:"udp_port"`
-		GRPCPort      int    `yaml:"grpc_port"`
-		WebsocketPort int    `yaml:"websocket_port"`
-	} `yaml:"server"`
-
-	Database struct {
-		Path string `yaml:"path"`
-	} `yaml:"database"`
-
-	User struct {
-		Username string `yaml:"username"`
-		Token    string `yaml:"token"`
-	} `yaml:"user"`
+	APIEndpoint   string `yaml:"api_endpoint"`
+	GRPCAddress   string `yaml:"grpc_address"`
+	DatabasePath  string `yaml:"database_path"`
+	LogLevel      string `yaml:"log_level"`
+	AuthToken     string `yaml:"auth_token"`
+	ActiveProfile string `yaml:"active_profile"`
 }
 
-func Load() (*Config, error) {
-	home, _ := os.UserHomeDir()
-	configPath := filepath.Join(home, ".mangahub", "config.yaml")
+// Current holds the loaded configuration.
+var Current Config
 
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return nil, err
-	}
-
-	cfg := &Config{}
-	yaml.Unmarshal(data, cfg)
-	return cfg, nil
-}
+// Path tracks the loaded configuration file path.
+var Path string
