@@ -1,0 +1,6 @@
+grpc_server:  "localhost:50051"
+http_server:  "http://localhost:8080"
+tcp_server:   "localhost:9000"
+udp_server:   "localhost:9001"
+ws_server:    "ws://localhost:8081/ws"
+token: ""
