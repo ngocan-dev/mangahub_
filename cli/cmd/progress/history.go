@@ -2,7 +2,6 @@ package progress
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/ngocan-dev/mangahub_/cli/internal/api"
 	"github.com/ngocan-dev/mangahub_/cli/internal/config"
@@ -43,7 +42,7 @@ var historyCmd = &cobra.Command{
 			title := fmt.Sprintf("Reading Progress History (%s)", records[0].Manga)
 			table := utils.Table{Headers: []string{"Date", "Chapter", "Volume", "Notes", "Source"}}
 			for _, r := range records {
-				table.AddRow(r.Date.Format("2006-01-02"), fmt.Sprintf("%d", r.Chapter), fmt.Sprintf("%d", r.Volume), r.Notes, r.Source)
+				table.AddRow(r.Date.Format("2006-01-02"), fmt.Sprintf("%d", r.Chapter), volumeString(r.Volume), r.Notes, r.Source)
 			}
 			cmd.Println(table.RenderWithTitle(title))
 			return nil
@@ -54,22 +53,21 @@ var historyCmd = &cobra.Command{
 			return nil
 		}
 
-		summary := map[string]int{}
-		names := map[string]string{}
+		table := utils.Table{Headers: []string{"Manga", "Date", "Chapter", "Volume", "Source"}}
 		for _, r := range records {
-			summary[r.MangaID]++
-			names[r.MangaID] = r.Manga
+			table.AddRow(r.Manga, r.Date.Format("2006-01-02"), fmt.Sprintf("%d", r.Chapter), volumeString(r.Volume), r.Source)
 		}
-		keys := make([]string, 0, len(summary))
-		for id := range summary {
-			keys = append(keys, id)
-		}
-		sort.Strings(keys)
-		for _, id := range keys {
-			cmd.Printf("%s (%d entries)\n", names[id], summary[id])
-		}
+
+		cmd.Println(table.RenderWithTitle("Reading Progress History"))
 		return nil
 	},
+}
+
+func volumeString(v int) string {
+	if v <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d", v)
 }
 
 func init() {
