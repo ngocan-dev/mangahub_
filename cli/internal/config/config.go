@@ -12,6 +12,12 @@ import (
 // DefaultBaseURL is the fallback API endpoint when none is configured.
 const DefaultBaseURL = "http://localhost:8080"
 
+// DefaultGRPCAddress is the default address for gRPC connections.
+const DefaultGRPCAddress = "localhost:50051"
+
+// DefaultUDPPort is the default port used for UDP notification delivery.
+const DefaultUDPPort = 5050
+
 // Config holds user-specific settings persisted to disk.
 type Config struct {
 	Token       string   `json:"token"`
@@ -22,7 +28,9 @@ type Config struct {
 		Autosync      bool `json:"autosync"`
 		Notifications bool `json:"notifications"`
 	} `json:"settings"`
-	BaseURL string `json:"base_url"`
+	BaseURL     string `json:"base_url"`
+	GRPCAddress string `json:"grpc_address"`
+	UDPPort     int    `json:"udp_port"`
 }
 
 // RuntimeOptions capture flags that should not be persisted to disk.
@@ -100,6 +108,14 @@ func Load(customPath string) (*Manager, error) {
 		cfg.BaseURL = DefaultBaseURL
 	}
 
+	if cfg.GRPCAddress == "" {
+		cfg.GRPCAddress = DefaultGRPCAddress
+	}
+
+	if cfg.UDPPort == 0 {
+		cfg.UDPPort = DefaultUDPPort
+	}
+
 	m := &Manager{Path: path, Data: cfg}
 	mu.Lock()
 	currentManager = m
@@ -167,7 +183,7 @@ func ensurePathExists(path string) error {
 		return err
 	}
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		empty := Config{BaseURL: DefaultBaseURL}
+		empty := Config{BaseURL: DefaultBaseURL, GRPCAddress: DefaultGRPCAddress, UDPPort: DefaultUDPPort}
 		data, err := json.MarshalIndent(empty, "", "  ")
 		if err != nil {
 			return fmt.Errorf("init config: %w", err)
