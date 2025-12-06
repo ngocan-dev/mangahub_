@@ -5,8 +5,10 @@ import (
 	"os"
 
 	"github.com/ngocan-dev/mangahub_/cli/cmd/auth"
+	grpcCmd "github.com/ngocan-dev/mangahub_/cli/cmd/grpc"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/library"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/manga"
+	notifycmd "github.com/ngocan-dev/mangahub_/cli/cmd/notify"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/progress"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/server"
 	"github.com/ngocan-dev/mangahub_/cli/internal/config"
@@ -48,6 +50,8 @@ func init() {
 
 	rootCmd.AddCommand(server.ServerCmd)
 	rootCmd.AddCommand(auth.AuthCmd)
+	rootCmd.AddCommand(notifycmd.NotifyCmd)
+	rootCmd.AddCommand(grpcCmd.GRPCCmd)
 	rootCmd.AddCommand(manga.MangaCmd)
 	rootCmd.AddCommand(library.LibraryCmd)
 	rootCmd.AddCommand(progress.ProgressCmd)
