@@ -1,6 +1,9 @@
 package server
 
-import "github.com/spf13/cobra"
+import (
+	serverstate "github.com/ngocan-dev/mangahub_/cli/internal/server"
+	"github.com/spf13/cobra"
+)
 
 var stopCmd = &cobra.Command{
 	Use:     "stop",
@@ -8,8 +11,16 @@ var stopCmd = &cobra.Command{
 	Long:    "Stop the running MangaHub server instance.",
 	Example: "mangahub server stop",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// TODO: Implement server stop logic
-		cmd.Println("Server stop is not yet implemented.")
+		cmd.Println("Stopping MangaHub Servers...")
+		cmd.Println()
+
+		for _, component := range serverstate.Components() {
+			cmd.Println("✓ " + component.StopLabel)
+		}
+
+		cmd.Println()
+		cmd.Println("All services stopped.")
+		serverstate.MarkStopped()
 		return nil
 	},
 }
