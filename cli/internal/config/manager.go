@@ -6,32 +6,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
-
-// DefaultBaseURL is the fallback API endpoint when none is configured.
-const DefaultBaseURL = "http://localhost:8080"
-
-// DefaultGRPCAddress is the default address for gRPC connections.
-const DefaultGRPCAddress = "localhost:50051"
-
-// DefaultUDPPort is the default port used for UDP notification delivery.
-const DefaultUDPPort = 5050
-
-// Config holds user-specific settings persisted to disk.
-type Config struct {
-	Token       string   `json:"token"`
-	ExpiresAt   string   `json:"expires_at"`
-	Username    string   `json:"username"`
-	Permissions []string `json:"permissions"`
-	Settings    struct {
-		Autosync      bool `json:"autosync"`
-		Notifications bool `json:"notifications"`
-	} `json:"settings"`
-	BaseURL     string `json:"base_url"`
-	GRPCAddress string `json:"grpc_address"`
-	UDPPort     int    `json:"udp_port"`
-}
 
 // RuntimeOptions capture flags that should not be persisted to disk.
 type RuntimeOptions struct {
@@ -39,10 +16,17 @@ type RuntimeOptions struct {
 	Quiet   bool
 }
 
+// Meta stores CLI-wide metadata such as the active profile.
+type Meta struct {
+	ActiveProfile string `json:"active_profile"`
+}
+
 // Manager manages loading and saving configuration files.
 type Manager struct {
-	Path string
-	Data Config
+	Path     string
+	MetaPath string
+	Data     Config
+	meta     Meta
 }
 
 var (
@@ -67,11 +51,36 @@ func Runtime() RuntimeOptions {
 
 // DefaultPath returns the default configuration file path (~/.mangahub/config.json).
 func DefaultPath() (string, error) {
+	dir, err := ConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "config.json"), nil
+}
+
+// ConfigDir returns the configuration directory for MangaHub (~/.mangahub).
+func ConfigDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".mangahub", "config.json"), nil
+	return filepath.Join(home, ".mangahub"), nil
+}
+
+func profileDir(name string) (string, error) {
+	dir, err := ConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "profiles", name), nil
+}
+
+func profileConfigPath(name string) (string, error) {
+	dir, err := profileDir(name)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "config.json"), nil
 }
 
 func resolvePath(custom string) (string, error) {
@@ -81,6 +90,11 @@ func resolvePath(custom string) (string, error) {
 	return DefaultPath()
 }
 
+func metaPathForConfig(configPath string) (string, error) {
+	dir := filepath.Dir(configPath)
+	return filepath.Join(dir, "config.meta"), nil
+}
+
 // Load loads configuration from disk, creating it with defaults if needed.
 func Load(customPath string) (*Manager, error) {
 	path, err := resolvePath(customPath)
@@ -88,35 +102,51 @@ func Load(customPath string) (*Manager, error) {
 		return nil, err
 	}
 
-	if err := ensurePathExists(path); err != nil {
+	metaPath, err := metaPathForConfig(path)
+	if err != nil {
 		return nil, err
 	}
 
-	raw, err := os.ReadFile(path)
+	meta, err := loadMeta(metaPath)
+	if err != nil {
+		return nil, err
+	}
+
+	configPath := path
+	active := strings.TrimSpace(meta.ActiveProfile)
+	if active == "" {
+		active = "default"
+	}
+
+	if active != "default" && (customPath == "" || customPath == path) {
+		if configPath, err = profileConfigPath(active); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := ensurePathExists(configPath, active); err != nil {
+		return nil, err
+	}
+
+	raw, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 
-	cfg := Config{BaseURL: DefaultBaseURL}
+	cfg := DefaultConfig(active)
 	if len(raw) > 0 {
 		if err := json.Unmarshal(raw, &cfg); err != nil {
 			return nil, fmt.Errorf("parse config: %w", err)
 		}
 	}
 
-	if cfg.BaseURL == "" {
-		cfg.BaseURL = DefaultBaseURL
+	if cfg.Auth.Profile == "" {
+		cfg.Auth.Profile = active
 	}
 
-	if cfg.GRPCAddress == "" {
-		cfg.GRPCAddress = DefaultGRPCAddress
-	}
+	applyDerived(&cfg)
 
-	if cfg.UDPPort == 0 {
-		cfg.UDPPort = DefaultUDPPort
-	}
-
-	m := &Manager{Path: path, Data: cfg}
+	m := &Manager{Path: configPath, MetaPath: metaPath, Data: cfg, meta: meta}
 	mu.Lock()
 	currentManager = m
 	mu.Unlock()
@@ -135,9 +165,10 @@ func (m *Manager) Save() error {
 	if m == nil {
 		return errors.New("config manager is not initialized")
 	}
-	if err := ensurePathExists(m.Path); err != nil {
+	if err := ensurePathExists(m.Path, m.meta.ActiveProfile); err != nil {
 		return err
 	}
+	applyDerived(&m.Data)
 	data, err := json.MarshalIndent(m.Data, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
@@ -146,6 +177,24 @@ func (m *Manager) Save() error {
 		return fmt.Errorf("write config: %w", err)
 	}
 	return nil
+}
+
+// Reset restores the configuration to default values for the active profile.
+func (m *Manager) Reset() error {
+	active := m.ActiveProfile()
+	m.Data = DefaultConfig(active)
+	return m.Save()
+}
+
+// ActiveProfile returns the currently active profile name.
+func (m *Manager) ActiveProfile() string {
+	if m == nil {
+		return ""
+	}
+	if strings.TrimSpace(m.meta.ActiveProfile) == "" {
+		return "default"
+	}
+	return m.meta.ActiveProfile
 }
 
 // UpdateToken saves a new authentication token to the configuration file.
@@ -158,10 +207,11 @@ func (m *Manager) UpdateToken(token string) error {
 func (m *Manager) UpdateSession(token, expiresAt, username string, permissions []string, autosync, notifications bool) error {
 	m.Data.Token = token
 	m.Data.ExpiresAt = expiresAt
-	m.Data.Username = username
+	m.Data.Auth.Username = username
 	m.Data.Permissions = permissions
 	m.Data.Settings.Autosync = autosync
 	m.Data.Settings.Notifications = notifications
+	m.Data.Notifications.Enabled = notifications
 	return m.Save()
 }
 
@@ -169,22 +219,23 @@ func (m *Manager) UpdateSession(token, expiresAt, username string, permissions [
 func (m *Manager) ClearSession() error {
 	m.Data.Token = ""
 	m.Data.ExpiresAt = ""
-	m.Data.Username = ""
+	m.Data.Auth.Username = ""
 	m.Data.Permissions = nil
 	m.Data.Settings.Autosync = false
 	m.Data.Settings.Notifications = false
+	m.Data.Notifications.Enabled = false
 
 	return m.Save()
 }
 
-func ensurePathExists(path string) error {
+func ensurePathExists(path, profile string) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		empty := Config{BaseURL: DefaultBaseURL, GRPCAddress: DefaultGRPCAddress, UDPPort: DefaultUDPPort}
-		data, err := json.MarshalIndent(empty, "", "  ")
+		cfg := DefaultConfig(profile)
+		data, err := json.MarshalIndent(cfg, "", "  ")
 		if err != nil {
 			return fmt.Errorf("init config: %w", err)
 		}
@@ -196,4 +247,38 @@ func ensurePathExists(path string) error {
 		return err
 	}
 	return nil
+}
+
+func loadMeta(path string) (Meta, error) {
+	meta := Meta{ActiveProfile: "default"}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return meta, err
+	}
+
+	raw, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		if err := saveMeta(path, meta); err != nil {
+			return meta, err
+		}
+		return meta, nil
+	}
+	if err != nil {
+		return meta, err
+	}
+
+	if len(raw) > 0 {
+		_ = json.Unmarshal(raw, &meta)
+	}
+	if strings.TrimSpace(meta.ActiveProfile) == "" {
+		meta.ActiveProfile = "default"
+	}
+	return meta, nil
+}
+
+func saveMeta(path string, meta Meta) error {
+	data, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
 }
