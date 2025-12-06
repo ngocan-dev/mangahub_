@@ -5,32 +5,25 @@ import (
 	"os"
 
 	"github.com/ngocan-dev/mangahub_/cli/cmd/auth"
-	"github.com/ngocan-dev/mangahub_/cli/cmd/backup"
-	"github.com/ngocan-dev/mangahub_/cli/cmd/chat"
-	configcmd "github.com/ngocan-dev/mangahub_/cli/cmd/config"
-	"github.com/ngocan-dev/mangahub_/cli/cmd/db"
-	"github.com/ngocan-dev/mangahub_/cli/cmd/export"
-	"github.com/ngocan-dev/mangahub_/cli/cmd/grpc"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/library"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/manga"
-	"github.com/ngocan-dev/mangahub_/cli/cmd/notify"
-	"github.com/ngocan-dev/mangahub_/cli/cmd/profile"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/progress"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/server"
-	"github.com/ngocan-dev/mangahub_/cli/cmd/stats"
-	syncCmd "github.com/ngocan-dev/mangahub_/cli/cmd/sync"
-	"github.com/ngocan-dev/mangahub_/cli/cmd/update"
-	"github.com/ngocan-dev/mangahub_/cli/config"
+	"github.com/ngocan-dev/mangahub_/cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
-var cfgFile string
+var (
+	cfgFile string
+	verbose bool
+	quiet   bool
+)
 
 // rootCmd represents the base command when called without any subcommands.
 var rootCmd = &cobra.Command{
 	Use:   "mangahub",
 	Short: "MangaHub CLI for managing manga libraries and progress",
-	Long:  "MangaHub CLI provides commands to manage manga, libraries, synchronization, and more.",
+	Long:  "MangaHub CLI provides commands to register, login, search manga, manage libraries, and track progress.",
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -42,27 +35,20 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is ~/.mangahub/config.yaml)")
+	defaultPath, _ := config.DefaultPath()
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", defaultPath, "Custom config path (default: ~/.mangahub/config.json)")
+	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "Enable verbose logs")
+	rootCmd.PersistentFlags().BoolVar(&quiet, "quiet", false, "Suppress all non-error output")
+
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
-		return config.LoadConfig(cfgFile)
+		config.SetRuntimeOptions(verbose, quiet)
+		_, err := config.Load(cfgFile)
+		return err
 	}
 
-	rootCmd.AddCommand(initCmd)
-	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(server.ServerCmd)
 	rootCmd.AddCommand(auth.AuthCmd)
 	rootCmd.AddCommand(manga.MangaCmd)
 	rootCmd.AddCommand(library.LibraryCmd)
 	rootCmd.AddCommand(progress.ProgressCmd)
-	rootCmd.AddCommand(syncCmd.SyncCmd)
-	rootCmd.AddCommand(notify.NotifyCmd)
-	rootCmd.AddCommand(grpc.GRPCCmd)
-	rootCmd.AddCommand(chat.ChatCmd)
-	rootCmd.AddCommand(stats.StatsCmd)
-	rootCmd.AddCommand(export.ExportCmd)
-	rootCmd.AddCommand(backup.BackupCmd)
-	rootCmd.AddCommand(db.DBCmd)
-	rootCmd.AddCommand(configcmd.ConfigCmd)
-	rootCmd.AddCommand(profile.ProfileCmd)
-	rootCmd.AddCommand(update.UpdateCmd)
 }
