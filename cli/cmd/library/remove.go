@@ -2,7 +2,6 @@ package library
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 
