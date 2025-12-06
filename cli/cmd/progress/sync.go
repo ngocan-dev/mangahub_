@@ -35,19 +35,30 @@ var syncCmd = &cobra.Command{
 
 		cmd.Println("Starting manual sync...\n")
 
-		cmd.Printf("Local database: %s Ready\n", icon(resp.LocalReady))
+		manual := isync.RunManualSync(resp.TCP.Devices, time.Now().UTC(), resp.Cloud.Pending)
+		localMsg := "Updated"
+		if resp.Local.Message != "" {
+			localMsg = resp.Local.Message
+		}
+		cmd.Printf("Local database: %s %s\n", icon(resp.Local.OK), localMsg)
 
-		tcpResult := isync.Broadcast(resp.TCPDevices)
-		tcpIcon := "✗"
-		tcpMsg := "Failed"
-		if tcpResult.Error == nil {
-			tcpIcon = "✓"
-			tcpMsg = fmt.Sprintf("Synced to %d devices", tcpResult.Devices)
+		tcpIcon := icon(resp.TCP.OK)
+		tcpMsg := resp.TCP.Message
+		if tcpMsg == "" {
+			tcpMsg = fmt.Sprintf("Broadcasting latest progress to %d devices", manual.TCP.Devices)
+		}
+		if resp.TCP.OK && manual.TCP.Error != nil {
+			tcpIcon = "✗"
+			tcpMsg = manual.TCP.Error.Error()
 		}
 		cmd.Printf("TCP sync server: %s %s\n", tcpIcon, tcpMsg)
 
-		cloud := isync.SyncCloud(time.Now().UTC(), 0)
-		cmd.Printf("Cloud backup: %s %s\n", icon(cloud.Success), cloud.Message)
+		cloudIcon := icon(resp.Cloud.OK)
+		cloudMsg := resp.Cloud.Message
+		if cloudMsg == "" {
+			cloudMsg = manual.Cloud.Message
+		}
+		cmd.Printf("Cloud backup: %s %s\n", cloudIcon, cloudMsg)
 
 		cmd.Println("")
 		cmd.Println("✓ Sync completed successfully!")

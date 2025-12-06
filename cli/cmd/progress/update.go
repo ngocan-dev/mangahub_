@@ -60,47 +60,45 @@ var updateCmd = &cobra.Command{
 
 		output.PrintJSON(cmd, resp)
 		if config.Runtime().Quiet {
-			output.PrintSuccess(cmd, "✓ Progress updated successfully!")
 			return nil
 		}
 
 		delta := resp.CurrentChapter - resp.PreviousChapter
-		deltaStr := fmt.Sprintf("(%+d)", delta)
 
 		cmd.Println("Updating reading progress...")
 		cmd.Println("✓ Progress updated successfully!")
 		cmd.Println("")
-		cmd.Printf("Manga: %s\n", resp.MangaName)
+		cmd.Printf("Manga: %s\n", resp.MangaTitle)
 		cmd.Printf("Previous: Chapter %s\n", formatNumber(resp.PreviousChapter))
-		cmd.Printf("Current: Chapter %s %s\n", formatNumber(resp.CurrentChapter), deltaStr)
+		cmd.Printf("Current: Chapter %s (%+d)\n", formatNumber(resp.CurrentChapter), delta)
 		cmd.Printf("Updated: %s\n", resp.UpdatedAt.UTC().Format("2006-01-02 15:04:05 MST"))
 		cmd.Println("")
 
 		cmd.Println("Sync Status:")
-		cmd.Printf("Local database: %s %s\n", icon(resp.Sync.Local.Updated), resp.Sync.Local.Note)
+		cmd.Printf("Local database: %s %s\n", icon(resp.Sync.Local.OK), syncMessage(resp.Sync.Local.Message, "Updated"))
 
 		tcpResult := isync.Broadcast(resp.Sync.TCP.Devices)
 		tcpIcon := "✗"
 		tcpMsg := "Failed"
-		if tcpResult.Error == nil {
+		if resp.Sync.TCP.OK && tcpResult.Error == nil {
 			tcpIcon = "✓"
 			tcpMsg = fmt.Sprintf("Broadcasting to %d connected devices", tcpResult.Devices)
 		}
 		cmd.Printf("TCP sync server: %s %s\n", tcpIcon, tcpMsg)
 
-		cloudIcon := icon(resp.Sync.Cloud.Success)
-		cloudMsg := resp.Sync.Cloud.Message
+		cloudIcon := icon(resp.Sync.Cloud.OK)
+		cloudMsg := syncMessage(resp.Sync.Cloud.Message, "Synced")
 		cmd.Printf("Cloud backup: %s %s\n", cloudIcon, cloudMsg)
 		cmd.Println("")
 
 		cmd.Println("Statistics:")
-		cmd.Printf("Total chapters read: %s\n", formatNumber(resp.Statistics.TotalRead))
-		cmd.Printf("Reading streak: %d days\n", resp.Statistics.ReadingStreak)
-		cmd.Printf("Estimated completion: %s\n", resp.Statistics.EstimatedCompletion)
+		cmd.Printf("Total chapters read: %s\n", formatNumber(resp.TotalChaptersRead))
+		cmd.Printf("Reading streak: %d days\n", resp.ReadingStreakDays)
+		cmd.Printf("Estimated completion: %s\n", resp.EstimatedCompletion)
 		cmd.Println("")
 
 		cmd.Println("Next actions:")
-		cmd.Printf("Continue reading: Chapter %s available\n", formatNumber(resp.CurrentChapter+1))
+		cmd.Printf("Continue reading: Chapter %s available\n", formatNumber(resp.NextChapterAvailable))
 		cmd.Printf("Rate this chapter: mangahub library update --manga-id %s --rating 9\n", resp.MangaID)
 		return nil
 	},
@@ -111,6 +109,13 @@ func icon(ok bool) string {
 		return "✓"
 	}
 	return "✗"
+}
+
+func syncMessage(message, fallback string) string {
+	if strings.TrimSpace(message) != "" {
+		return message
+	}
+	return fallback
 }
 
 func formatNumber(n int) string {

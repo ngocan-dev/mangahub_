@@ -2,7 +2,6 @@ package progress
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/ngocan-dev/mangahub_/cli/internal/api"
 	"github.com/ngocan-dev/mangahub_/cli/internal/config"
@@ -34,13 +33,17 @@ var syncStatusCmd = &cobra.Command{
 
 		cmd.Println("Progress Sync Status")
 		cmd.Println("")
-		cmd.Printf("Local database: ✓ Updated %s\n", api.HumanRelative(time.Now().UTC().Add(-status.LocalUpdatedAgo)))
-		cmd.Printf("TCP sync server: ✓ %d devices connected\n", status.TCPDevices)
-		cmd.Printf("Cloud backup: ✓ Last synced: %s\n", status.CloudLastSync.UTC().Format("2006-01-02 15:04:05 MST"))
+		cmd.Printf("Local database: %s Updated %s\n", icon(status.Local.OK), api.HumanRelative(status.Local.Updated))
+		tcpMsg := status.TCP.Message
+		if tcpMsg == "" {
+			tcpMsg = fmt.Sprintf("%d devices connected", status.TCP.Devices)
+		}
+		cmd.Printf("TCP sync server: %s %s\n", icon(status.TCP.OK), tcpMsg)
+		cmd.Printf("Cloud backup: %s Last synced: %s\n", icon(status.Cloud.OK), status.Cloud.LastSync.UTC().Format("2006-01-02 15:04:05 MST"))
 		cmd.Println("")
 
-		if status.CloudPendingDelta > 0 {
-			cmd.Printf("⚠ Cloud backup behind by %d updates.\n", status.CloudPendingDelta)
+		if status.Cloud.Pending > 0 {
+			cmd.Printf("⚠ Cloud backup is behind the local database.\n")
 			cmd.Println("Run: mangahub progress sync")
 			return nil
 		}

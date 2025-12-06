@@ -21,18 +21,18 @@ type ProgressUpdateRequest struct {
 
 // ProgressUpdateResponse represents the calculated update details.
 type ProgressUpdateResponse struct {
-	MangaID         string        `json:"manga_id"`
-	MangaName       string        `json:"manga_name"`
-	PreviousChapter int           `json:"previous_chapter"`
-	CurrentChapter  int           `json:"current_chapter"`
-	Volume          int           `json:"volume"`
-	Notes           string        `json:"notes"`
-	UpdatedAt       time.Time     `json:"updated_at"`
-	TotalChapters   int           `json:"total_chapters"`
-	Completed       bool          `json:"completed"`
-	History         []HistoryItem `json:"history"`
-	Statistics      Statistics    `json:"statistics"`
-	Sync            SyncSnapshot  `json:"sync"`
+	MangaID              string               `json:"manga_id"`
+	MangaTitle           string               `json:"manga_title"`
+	PreviousChapter      int                  `json:"previous_chapter"`
+	CurrentChapter       int                  `json:"current_chapter"`
+	Volume               int                  `json:"volume,omitempty"`
+	Notes                string               `json:"notes,omitempty"`
+	UpdatedAt            time.Time            `json:"updated_at"`
+	TotalChaptersRead    int                  `json:"total_chapters_read"`
+	ReadingStreakDays    int                  `json:"reading_streak_days"`
+	EstimatedCompletion  string               `json:"estimated_completion"`
+	NextChapterAvailable int                  `json:"next_chapter_available"`
+	Sync                 ProgressSyncSnapshot `json:"sync"`
 }
 
 // HistoryItem represents a single history record.
@@ -46,46 +46,47 @@ type HistoryItem struct {
 	Source  string    `json:"source"`
 }
 
-// Statistics captures computed stats for the update.
-type Statistics struct {
-	TotalRead           int    `json:"total_read"`
-	ReadingStreak       int    `json:"reading_streak"`
-	EstimatedCompletion string `json:"estimated_completion"`
+// ProgressSyncSnapshot mirrors the simulated sync layers returned by the backend.
+type ProgressSyncSnapshot struct {
+	Local SyncLayerStatus `json:"local"`
+	TCP   TCPSyncStatus   `json:"tcp"`
+	Cloud CloudSyncStatus `json:"cloud"`
 }
 
-// SyncSnapshot mirrors the simulated sync layers.
-type SyncSnapshot struct {
-	Local struct {
-		Updated bool   `json:"updated"`
-		Note    string `json:"note"`
-	} `json:"local"`
-	TCP struct {
-		Success  bool   `json:"success"`
-		Devices  int    `json:"devices"`
-		Message  string `json:"message"`
-		LastSync string `json:"last_sync"`
-	} `json:"tcp"`
-	Cloud struct {
-		Success  bool   `json:"success"`
-		Message  string `json:"message"`
-		LastSync string `json:"last_sync"`
-		Pending  int    `json:"pending"`
-	} `json:"cloud"`
+// ManualSyncResult is returned from a manual sync command.
+type ManualSyncResult struct {
+	Local SyncLayerStatus `json:"local"`
+	TCP   TCPSyncStatus   `json:"tcp"`
+	Cloud CloudSyncStatus `json:"cloud"`
 }
 
-// SyncResult is returned from a manual sync command.
-type SyncResult struct {
-	LocalReady bool   `json:"local_ready"`
-	TCPDevices int    `json:"tcp_devices"`
-	CloudState string `json:"cloud_state"`
+// SyncLayerStatus describes a basic sync status.
+type SyncLayerStatus struct {
+	OK      bool      `json:"ok"`
+	Message string    `json:"message,omitempty"`
+	Updated time.Time `json:"updated,omitempty"`
+}
+
+// TCPSyncStatus captures TCP layer information.
+type TCPSyncStatus struct {
+	OK      bool   `json:"ok"`
+	Devices int    `json:"devices"`
+	Message string `json:"message,omitempty"`
+}
+
+// CloudSyncStatus captures cloud sync information.
+type CloudSyncStatus struct {
+	OK       bool      `json:"ok"`
+	Message  string    `json:"message,omitempty"`
+	LastSync time.Time `json:"last_sync,omitempty"`
+	Pending  int       `json:"pending,omitempty"`
 }
 
 // SyncStatus represents sync freshness for each layer.
 type SyncStatus struct {
-	LocalUpdatedAgo   time.Duration `json:"local_updated_ago"`
-	TCPDevices        int           `json:"tcp_devices"`
-	CloudLastSync     time.Time     `json:"cloud_last_sync"`
-	CloudPendingDelta int           `json:"cloud_pending_delta"`
+	Local SyncLayerStatus `json:"local"`
+	TCP   TCPSyncStatus   `json:"tcp"`
+	Cloud CloudSyncStatus `json:"cloud"`
 }
 
 var (
@@ -95,7 +96,7 @@ var (
 
 type progressState struct {
 	MangaID       string
-	Name          string
+	Title         string
 	TotalChapters int
 	Completed     bool
 	Current       int
@@ -129,7 +130,7 @@ func seedProgress() {
 
 		progressDB["one-piece"] = &progressState{
 			MangaID:       "one-piece",
-			Name:          "One Piece",
+			Title:         "One Piece",
 			TotalChapters: 1100,
 			Completed:     false,
 			Current:       1094,
@@ -146,12 +147,12 @@ func seedProgress() {
 		if len(progressDB["one-piece"].History) >= 3 {
 			progressDB["one-piece"].History[2].Notes = "Great ending!"
 			progressDB["one-piece"].History[2].Source = "CLI Update"
-			progressDB["one-piece"].History[1].Source = "Sync Device"
+			progressDB["one-piece"].History[1].Source = "TCP Sync"
 			progressDB["one-piece"].History[0].Source = "Cloud Restore"
 		}
 
-		progressDB["naruto"] = &progressState{MangaID: "naruto", Name: "Naruto", TotalChapters: 700, Current: 120, Estimated: "20 days", ReadingStreak: 5}
-		progressDB["attack-on-titan"] = &progressState{MangaID: "attack-on-titan", Name: "Attack on Titan", TotalChapters: 139, Current: 80, Estimated: "2 months", ReadingStreak: 2}
+		progressDB["naruto"] = &progressState{MangaID: "naruto", Title: "Naruto", TotalChapters: 700, Current: 120, Estimated: "20 days", ReadingStreak: 5, UpdatedAt: baseTime.Add(-2 * time.Hour)}
+		progressDB["attack-on-titan"] = &progressState{MangaID: "attack-on-titan", Title: "Attack on Titan", TotalChapters: 139, Current: 80, Estimated: "2 months", ReadingStreak: 2, UpdatedAt: baseTime.Add(-3 * time.Hour)}
 	})
 }
 
@@ -165,11 +166,11 @@ func (c *Client) UpdateProgressDetail(ctx context.Context, req ProgressUpdateReq
 
 	state, ok := progressDB[req.MangaID]
 	if !ok {
-		return nil, fmt.Errorf("✗ Progress update failed: Manga '%s' not found in your library\nAdd to library first:\nmangahub library add --manga-id %s --status reading", req.MangaID, req.MangaID)
+		return nil, fmt.Errorf("✗ Progress update failed: Manga '%s' not found in your library\nAdd to library first: mangahub library add --manga-id %s --status reading", req.MangaID, req.MangaID)
 	}
 
 	if strings.Contains(strings.ToLower(c.baseURL), "unreachable") {
-		return nil, errors.New("✗ Progress update failed: Server connection error\nTry again or check: mangahub server status")
+		return nil, errors.New("✗ Progress update failed: Server connection error")
 	}
 
 	if req.Chapter > state.TotalChapters {
@@ -189,7 +190,7 @@ func (c *Client) UpdateProgressDetail(ctx context.Context, req ProgressUpdateReq
 
 	newEntry := HistoryItem{
 		MangaID: req.MangaID,
-		Manga:   state.Name,
+		Manga:   state.Title,
 		Date:    state.UpdatedAt,
 		Chapter: req.Chapter,
 		Volume:  state.Volume,
@@ -197,35 +198,31 @@ func (c *Client) UpdateProgressDetail(ctx context.Context, req ProgressUpdateReq
 		Source:  "CLI Update",
 	}
 	state.History = append([]HistoryItem{newEntry}, state.History...)
-	state.History = trimHistory(state.History, 3)
+	state.History = trimHistory(state.History, 5)
+
+	nextChapter := state.Current + 1
+	if nextChapter > state.TotalChapters {
+		nextChapter = state.TotalChapters
+	}
 
 	resp := &ProgressUpdateResponse{
-		MangaID:         state.MangaID,
-		MangaName:       state.Name,
-		PreviousChapter: prev,
-		CurrentChapter:  state.Current,
-		Volume:          state.Volume,
-		Notes:           req.Notes,
-		UpdatedAt:       state.UpdatedAt,
-		TotalChapters:   state.TotalChapters,
-		Completed:       state.Completed,
-		History:         state.History,
+		MangaID:              state.MangaID,
+		MangaTitle:           state.Title,
+		PreviousChapter:      prev,
+		CurrentChapter:       state.Current,
+		Volume:               state.Volume,
+		Notes:                req.Notes,
+		UpdatedAt:            state.UpdatedAt,
+		TotalChaptersRead:    state.Current,
+		ReadingStreakDays:    state.ReadingStreak,
+		EstimatedCompletion:  state.Estimated,
+		NextChapterAvailable: nextChapter,
+		Sync: ProgressSyncSnapshot{
+			Local: SyncLayerStatus{OK: true, Message: "Updated", Updated: state.UpdatedAt},
+			TCP:   TCPSyncStatus{OK: true, Devices: 3, Message: "Broadcasting to 3 connected devices"},
+			Cloud: CloudSyncStatus{OK: true, Message: "Synced", LastSync: state.UpdatedAt},
+		},
 	}
-
-	resp.Statistics = Statistics{
-		TotalRead:           state.Current,
-		ReadingStreak:       state.ReadingStreak,
-		EstimatedCompletion: state.Estimated,
-	}
-
-	resp.Sync.Local.Updated = true
-	resp.Sync.Local.Note = "Updated"
-	resp.Sync.TCP.Success = true
-	resp.Sync.TCP.Devices = 3
-	resp.Sync.TCP.Message = "Broadcasting to 3 connected devices"
-	resp.Sync.Cloud.Success = true
-	resp.Sync.Cloud.Message = "Synced"
-	resp.Sync.Cloud.LastSync = state.UpdatedAt.Format(time.RFC3339)
 
 	return resp, nil
 }
@@ -252,9 +249,14 @@ func (c *Client) ProgressHistory(ctx context.Context, mangaID string) ([]History
 }
 
 // TriggerProgressSync simulates syncing across layers.
-func (c *Client) TriggerProgressSync(ctx context.Context) (*SyncResult, error) {
+func (c *Client) TriggerProgressSync(ctx context.Context) (*ManualSyncResult, error) {
 	seedProgress()
-	result := &SyncResult{LocalReady: true, TCPDevices: 3, CloudState: "Up to date"}
+	now := time.Now().UTC()
+	result := &ManualSyncResult{
+		Local: SyncLayerStatus{OK: true, Message: "Updated", Updated: now},
+		TCP:   TCPSyncStatus{OK: true, Devices: 3, Message: "Broadcasting latest progress"},
+		Cloud: CloudSyncStatus{OK: true, Message: "Synced", LastSync: now},
+	}
 	return result, nil
 }
 
@@ -262,10 +264,9 @@ func (c *Client) TriggerProgressSync(ctx context.Context) (*SyncResult, error) {
 func (c *Client) GetSyncStatus(ctx context.Context) (*SyncStatus, error) {
 	seedProgress()
 	status := &SyncStatus{
-		LocalUpdatedAgo:   5 * time.Minute,
-		TCPDevices:        3,
-		CloudLastSync:     time.Date(2024, 1, 20, 16, 45, 0, 0, time.UTC),
-		CloudPendingDelta: 0,
+		Local: SyncLayerStatus{OK: true, Message: "Updated", Updated: time.Now().UTC().Add(-5 * time.Minute)},
+		TCP:   TCPSyncStatus{OK: true, Devices: 3, Message: "3 devices connected"},
+		Cloud: CloudSyncStatus{OK: true, Message: "Synced", LastSync: time.Date(2024, 1, 20, 16, 45, 0, 0, time.UTC)},
 	}
 	return status, nil
 }
