@@ -6,12 +6,14 @@ import (
 
 	"github.com/ngocan-dev/mangahub_/cli/cmd/auth"
 	chatcmd "github.com/ngocan-dev/mangahub_/cli/cmd/chat"
+	"github.com/ngocan-dev/mangahub_/cli/cmd/export"
 	grpcCmd "github.com/ngocan-dev/mangahub_/cli/cmd/grpc"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/library"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/manga"
 	notifycmd "github.com/ngocan-dev/mangahub_/cli/cmd/notify"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/progress"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/server"
+	"github.com/ngocan-dev/mangahub_/cli/cmd/stats"
 	"github.com/ngocan-dev/mangahub_/cli/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -52,9 +54,11 @@ func init() {
 	rootCmd.AddCommand(server.ServerCmd)
 	rootCmd.AddCommand(auth.AuthCmd)
 	rootCmd.AddCommand(notifycmd.NotifyCmd)
+	rootCmd.AddCommand(export.ExportCmd)
 	rootCmd.AddCommand(grpcCmd.GRPCCmd)
 	rootCmd.AddCommand(manga.MangaCmd)
 	rootCmd.AddCommand(library.LibraryCmd)
 	rootCmd.AddCommand(progress.ProgressCmd)
 	rootCmd.AddCommand(chatcmd.ChatCmd)
+	rootCmd.AddCommand(stats.StatsCmd)
 }
