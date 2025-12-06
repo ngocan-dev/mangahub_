@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/ngocan-dev/mangahub_/cli/cmd/auth"
+	chatcmd "github.com/ngocan-dev/mangahub_/cli/cmd/chat"
 	grpcCmd "github.com/ngocan-dev/mangahub_/cli/cmd/grpc"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/library"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/manga"
@@ -55,4 +56,5 @@ func init() {
 	rootCmd.AddCommand(manga.MangaCmd)
 	rootCmd.AddCommand(library.LibraryCmd)
 	rootCmd.AddCommand(progress.ProgressCmd)
+	rootCmd.AddCommand(chatcmd.ChatCmd)
 }
