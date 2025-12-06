@@ -78,14 +78,6 @@ type LoginResponse struct {
 	} `json:"user"`
 }
 
-// AddToLibrary adds a manga to the library.
-func (c *Client) AddToLibrary(ctx context.Context, mangaID, status string) (map[string]any, error) {
-	payload := map[string]any{"manga_id": mangaID, "status": status}
-	var resp map[string]any
-	err := c.doRequest(ctx, http.MethodPost, "/library/add", payload, &resp)
-	return resp, err
-}
-
 // UpdateProgress updates manga reading progress.
 func (c *Client) UpdateProgress(ctx context.Context, mangaID string, chapter int) (map[string]any, error) {
 	payload := map[string]any{"manga_id": mangaID, "chapter": chapter}
