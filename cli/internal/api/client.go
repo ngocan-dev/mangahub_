@@ -29,11 +29,15 @@ func NewClient(baseURL, token string) *Client {
 }
 
 // Register registers a new user.
-func (c *Client) Register(ctx context.Context, username, email string) (map[string]any, error) {
-	payload := map[string]string{"username": username, "email": email}
-	var resp map[string]any
+func (c *Client) Register(ctx context.Context, username, email, password string) (*RegisterResponse, error) {
+	payload := map[string]string{
+		"username": username,
+		"email":    email,
+		"password": password,
+	}
+	var resp RegisterResponse
 	err := c.doRequest(ctx, http.MethodPost, "/auth/register", payload, &resp)
-	return resp, err
+	return &resp, err
 }
 
 // Login authenticates a user and returns the API token.
@@ -147,6 +151,43 @@ func checkStatus(res *http.Response) error {
 	if res.StatusCode >= 200 && res.StatusCode < 300 {
 		return nil
 	}
+
 	data, _ := io.ReadAll(res.Body)
+	var apiErr struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}
+	_ = json.Unmarshal(data, &apiErr)
+
+	if apiErr.Error != "" {
+		return &Error{Code: apiErr.Error, Message: apiErr.Message, Status: res.StatusCode}
+	}
+
 	return fmt.Errorf("api error: %s", strings.TrimSpace(string(data)))
+}
+
+// Error represents an error response from the MangaHub API.
+type Error struct {
+	Code    string
+	Message string
+	Status  int
+}
+
+// Error implements the error interface.
+func (e *Error) Error() string {
+	if e.Message != "" {
+		return e.Message
+	}
+	if e.Code != "" {
+		return fmt.Sprintf("api error: %s", e.Code)
+	}
+	return "api error"
+}
+
+// RegisterResponse represents the registration response payload.
+type RegisterResponse struct {
+	ID        string `json:"id"`
+	Username  string `json:"username"`
+	Email     string `json:"email"`
+	CreatedAt string `json:"created_at"`
 }
