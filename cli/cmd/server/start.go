@@ -83,7 +83,7 @@ func registerRoutes(mux *http.ServeMux) {
 			return
 		}
 		query := strings.ToLower(r.URL.Query().Get("q"))
-		results := []api.Manga{
+		results := []api.MangaSearchResult{
 			{ID: "one-piece", Title: "One Piece", Status: "ongoing"},
 			{ID: "naruto", Title: "Naruto", Status: "completed"},
 			{ID: "bleach", Title: "Bleach", Status: "completed"},

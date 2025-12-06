@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 )
@@ -77,44 +76,6 @@ type LoginResponse struct {
 			Notifications bool `json:"notifications"`
 		} `json:"settings"`
 	} `json:"user"`
-}
-
-// Manga represents a manga search result.
-type Manga struct {
-	ID     string `json:"id"`
-	Title  string `json:"title"`
-	Status string `json:"status"`
-}
-
-// SearchManga searches manga titles.
-func (c *Client) SearchManga(ctx context.Context, query string) ([]Manga, error) {
-	endpoint := "/manga/search"
-	u, _ := url.Parse(c.baseURL + endpoint)
-	q := u.Query()
-	q.Set("q", query)
-	u.RawQuery = q.Encode()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-	c.applyHeaders(req)
-
-	res, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-
-	if err := checkStatus(res); err != nil {
-		return nil, err
-	}
-
-	var results []Manga
-	if err := json.NewDecoder(res.Body).Decode(&results); err != nil {
-		return nil, err
-	}
-	return results, nil
 }
 
 // AddToLibrary adds a manga to the library.
