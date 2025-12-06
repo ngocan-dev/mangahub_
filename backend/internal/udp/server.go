@@ -22,17 +22,25 @@ type Server struct {
 	clientsByUser  map[int64][]*Client // Clients grouped by user
 	clientsByNovel map[int64][]*Client // Clients grouped by novel subscription
 	mu             sync.RWMutex
+	adminHandler   *AdminHandler // Admin commands handler
+	metrics        *Metrics      // Server metrics
 }
 
 // NewServer creates a new UDP server instance
 func NewServer(address string, db *sql.DB) *Server {
-	return &Server{
+	s := &Server{
 		address:        address,
 		db:             db,
 		clients:        make(map[string]*Client),
 		clientsByUser:  make(map[int64][]*Client),
 		clientsByNovel: make(map[int64][]*Client),
+		metrics:        NewMetrics(), // Initialize metrics
 	}
+
+	// Initialize admin handler
+	s.adminHandler = NewAdminHandler(s)
+
+	return s
 }
 
 // Start starts the UDP server
@@ -95,11 +103,22 @@ func (s *Server) handlePacket(ctx context.Context, data []byte, addr *net.UDPAdd
 		return
 	}
 
+	// Track packets received
+	s.metrics.IncrementPacketsReceived()
+
 	switch packet.Type {
 	case PacketTypeRegister:
 		s.handleRegister(ctx, packet, addr)
 	case PacketTypeUnregister:
 		s.handleUnregister(ctx, packet, addr)
+	case PacketTypeAdminCommand:
+		// Handle admin commands
+		if s.adminHandler != nil {
+			s.adminHandler.Handle(ctx, packet, addr)
+		} else {
+			log.Printf("Admin handler not initialized")
+			s.sendError(addr, "admin_disabled", "admin commands not available")
+		}
 	default:
 		log.Printf("Unknown packet type: %s from %s", packet.Type, addr.String())
 		s.sendError(addr, "unknown_type", "unknown packet type")
@@ -163,6 +182,9 @@ func (s *Server) handleRegister(ctx context.Context, packet *Packet, addr *net.U
 		client := NewClient(addr, userID, novelIDs, req.AllNovels, req.DeviceID)
 		s.addClient(client)
 
+		// Track registration metric
+		s.metrics.IncrementRegistrations()
+
 		// Record subscription in database
 		go s.recordSubscription(ctx, client)
 	}
@@ -214,6 +236,9 @@ func (s *Server) handleUnregister(ctx context.Context, packet *Packet, addr *net
 	clientKey := fmt.Sprintf("%s:%d", addr.String(), userID)
 	s.removeClient(clientKey)
 
+	// Track unregistration metric
+	s.metrics.IncrementUnregistrations()
+
 	log.Printf("Client unregistered: UserID=%d, Address=%s", userID, addr.String())
 }
 
@@ -236,6 +261,9 @@ func (s *Server) addClient(client *Client) {
 			s.clientsByNovel[novelID] = append(s.clientsByNovel[novelID], client)
 		}
 	}
+
+	// Update active clients metric
+	s.metrics.SetActiveClients(int64(len(s.clients)))
 }
 
 // updateClientSubscriptions updates a client's novel subscriptions
@@ -310,6 +338,9 @@ func (s *Server) removeClient(clientKey string) {
 			}
 		}
 	}
+
+	// Update active clients metric
+	s.metrics.SetActiveClients(int64(len(s.clients)))
 }
 
 // sendPacket sends a UDP packet to an address
@@ -320,6 +351,10 @@ func (s *Server) sendPacket(addr *net.UDPAddr, packet *Packet) error {
 	}
 
 	_, err = s.conn.WriteToUDP(data, addr)
+	if err == nil {
+		// Track successful packets sent
+		s.metrics.IncrementPacketsSent()
+	}
 	return err
 }
 

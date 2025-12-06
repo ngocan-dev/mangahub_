@@ -82,9 +82,13 @@ func (n *Notifier) NotifyChapterRelease(ctx context.Context, novelID int64, nove
 			log.Printf("Failed to send notification to %s (UserID=%d) after retries: %v",
 				client.Address.String(), client.UserID, err)
 			failedCount++
+			// Track failed notification
+			n.server.metrics.IncrementFailedNotifications()
 			continue
 		}
 		successCount++
+		// Track successful notification
+		n.server.metrics.IncrementNotifications()
 	}
 
 	// Step 5: System logs successful broadcast
