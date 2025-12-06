@@ -18,6 +18,10 @@ const (
 	PacketTypeUnregister   PacketType = "unregister"
 	PacketTypeNotification PacketType = "notification"
 	PacketTypeError        PacketType = "error"
+
+	// Admin commands để quản lý server qua UDP
+	PacketTypeAdminCommand  PacketType = "admin"
+	PacketTypeAdminResponse PacketType = "admin_response"
 )
 
 // Packet represents a UDP protocol packet
@@ -66,4 +70,21 @@ func ParsePacket(data []byte) (*Packet, error) {
 // SerializePacket serializes a packet to JSON bytes
 func SerializePacket(packet *Packet) ([]byte, error) {
 	return json.Marshal(packet)
+}
+
+// Admin commands structure
+
+type AdminCommand struct {
+	Command   string                 `json:"command"`     // Tên lệnh
+	Token     string                 `json:"admin_token"` // Bảo mật
+	Params    map[string]interface{} `json:"params"`      // Tham số
+	RequestID string                 `json:"request_id"`  // Track request
+}
+
+type AdminResponse struct {
+	Success   bool        `json:"success"`
+	Command   string      `json:"command"`
+	Data      interface{} `json:"data"`
+	Error     string      `json:"error,omitempty"`
+	RequestID string      `json:"request_id"`
 }
