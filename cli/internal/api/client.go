@@ -40,14 +40,43 @@ func (c *Client) Register(ctx context.Context, username, email, password string)
 	return &resp, err
 }
 
-// Login authenticates a user and returns the API token.
-func (c *Client) Login(ctx context.Context, username string) (string, map[string]any, error) {
-	payload := map[string]string{"username": username}
-	var resp struct {
-		Token string `json:"token"`
+// Login authenticates a user using either username or email and returns session details.
+func (c *Client) Login(ctx context.Context, username, email, password string) (*LoginResponse, error) {
+	payload := map[string]any{
+		"username": username,
+		"email":    email,
+		"password": password,
 	}
+
+	var resp LoginResponse
 	err := c.doRequest(ctx, http.MethodPost, "/auth/login", payload, &resp)
-	return resp.Token, map[string]any{"token": resp.Token}, err
+	return &resp, err
+}
+
+// ChangePassword updates the user's password using the provided current and new password.
+func (c *Client) ChangePassword(ctx context.Context, currentPassword, newPassword string) (map[string]any, error) {
+	payload := map[string]any{
+		"current_password": currentPassword,
+		"new_password":     newPassword,
+	}
+
+	var resp map[string]any
+	err := c.doRequest(ctx, http.MethodPost, "/auth/change-password", payload, &resp)
+	return resp, err
+}
+
+// LoginResponse represents the authentication response payload.
+type LoginResponse struct {
+	Token     string `json:"token"`
+	ExpiresAt string `json:"expires_at"`
+	User      struct {
+		Username    string   `json:"username"`
+		Permissions []string `json:"permissions"`
+		Settings    struct {
+			Autosync      bool `json:"autosync"`
+			Notifications bool `json:"notifications"`
+		} `json:"settings"`
+	} `json:"user"`
 }
 
 // Manga represents a manga search result.

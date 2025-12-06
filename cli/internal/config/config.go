@@ -14,7 +14,14 @@ const DefaultBaseURL = "http://localhost:8080"
 
 // Config holds user-specific settings persisted to disk.
 type Config struct {
-	Token   string `json:"token"`
+	Token       string   `json:"token"`
+	ExpiresAt   string   `json:"expires_at"`
+	Username    string   `json:"username"`
+	Permissions []string `json:"permissions"`
+	Settings    struct {
+		Autosync      bool `json:"autosync"`
+		Notifications bool `json:"notifications"`
+	} `json:"settings"`
 	BaseURL string `json:"base_url"`
 }
 
@@ -128,6 +135,29 @@ func (m *Manager) Save() error {
 // UpdateToken saves a new authentication token to the configuration file.
 func (m *Manager) UpdateToken(token string) error {
 	m.Data.Token = token
+	return m.Save()
+}
+
+// UpdateSession saves a full authentication session to the configuration file.
+func (m *Manager) UpdateSession(token, expiresAt, username string, permissions []string, autosync, notifications bool) error {
+	m.Data.Token = token
+	m.Data.ExpiresAt = expiresAt
+	m.Data.Username = username
+	m.Data.Permissions = permissions
+	m.Data.Settings.Autosync = autosync
+	m.Data.Settings.Notifications = notifications
+	return m.Save()
+}
+
+// ClearSession removes authentication-related data from the configuration.
+func (m *Manager) ClearSession() error {
+	m.Data.Token = ""
+	m.Data.ExpiresAt = ""
+	m.Data.Username = ""
+	m.Data.Permissions = nil
+	m.Data.Settings.Autosync = false
+	m.Data.Settings.Notifications = false
+
 	return m.Save()
 }
 
