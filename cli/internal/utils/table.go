@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"strings"
 	"unicode"
 )
@@ -9,6 +10,11 @@ import (
 type Table struct {
 	Headers []string
 	Rows    [][]string
+}
+
+// AddRow appends a row to the table.
+func (t *Table) AddRow(values ...string) {
+	t.Rows = append(t.Rows, values)
 }
 
 // Render returns the formatted table as a string using box-drawing characters.
@@ -36,6 +42,18 @@ func (t *Table) Render() string {
 	}
 	b.WriteString(bottom)
 
+	return b.String()
+}
+
+// RenderWithTitle renders a labeled section with a table inside.
+func (t *Table) RenderWithTitle(title string) string {
+	if title == "" {
+		return t.Render()
+	}
+	var b strings.Builder
+	b.WriteString(title)
+	b.WriteString("\n\n")
+	b.WriteString(t.Render())
 	return b.String()
 }
 
@@ -160,4 +178,15 @@ func isWideRune(r rune) bool {
 	default:
 		return false
 	}
+}
+
+// FormatList groups items for display.
+func FormatList(items []string) string {
+	if len(items) == 0 {
+		return ""
+	}
+	if len(items) == 1 {
+		return items[0]
+	}
+	return fmt.Sprintf("%s and %s", strings.Join(items[:len(items)-1], ", "), items[len(items)-1])
 }
