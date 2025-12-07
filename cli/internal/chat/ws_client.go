@@ -214,7 +214,7 @@ func (c *simpleWS) writeFrame(op opcode, payload []byte) error {
 		masked[i] = payload[i] ^ maskKey[i%4]
 	}
 
-	_, err := connWrite(c.conn, append(header, masked...))
+	err := connWrite(c.conn, append(header, masked...))
 	return err
 }
 
