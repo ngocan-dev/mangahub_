@@ -26,7 +26,7 @@ func runAuthLogout(cmd *cobra.Command, args []string) error {
 		return errors.New("configuration not loaded")
 	}
 
-	if cfg.Data.Token == "" && cfg.Data.Username == "" {
+	if cfg.Data.Token == "" && cfg.Data.Auth.Username == "" {
 		cmd.Println("✗ You are not logged in.")
 		cmd.Println("Nothing to do.")
 		os.Exit(1)
