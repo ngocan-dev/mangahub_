@@ -1,6 +1,8 @@
 package stats
 
 import (
+	"github.com/ngocan-dev/mangahub_/cli/internal/config"
+	"github.com/ngocan-dev/mangahub_/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -18,6 +20,40 @@ var overviewCmd = &cobra.Command{
 	Long:    "Display summary statistics for your MangaHub library and usage.",
 	Example: "mangahub stats overview",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		format, err := output.GetFormat(cmd)
+		if err != nil {
+			return err
+		}
+
+		summary := map[string]any{
+			"total_manga_read":         42,
+			"total_chapters_read":      9832,
+			"average_chapters_per_day": 27.4,
+			"reading_streak_days":      45,
+			"most_active_day":          "2024-01-12",
+			"most_active_day_count":    312,
+			"favorite_genre":           "Shounen",
+			"top_manga": map[string]any{
+				"title":         "One Piece",
+				"chapters_read": 1095,
+			},
+			"time_spent_hours": 184,
+		}
+
+		if format == output.FormatJSON {
+			output.PrintJSON(cmd, summary)
+			return nil
+		}
+
+		if config.Runtime().Verbose {
+			output.PrintJSON(cmd, summary)
+			return nil
+		}
+
+		if config.Runtime().Quiet {
+			return nil
+		}
+
 		cmd.Println("Reading Statistics Overview")
 		cmd.Println()
 		cmd.Println("Total Manga Read: 42")
@@ -34,4 +70,5 @@ var overviewCmd = &cobra.Command{
 
 func init() {
 	StatsCmd.AddCommand(overviewCmd)
+	output.AddFlag(overviewCmd)
 }

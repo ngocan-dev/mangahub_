@@ -1,6 +1,10 @@
 package server
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/ngocan-dev/mangahub_/cli/internal/config"
+	"github.com/ngocan-dev/mangahub_/cli/internal/output"
+	"github.com/spf13/cobra"
+)
 
 var healthCmd = &cobra.Command{
 	Use:     "health",
@@ -8,7 +12,24 @@ var healthCmd = &cobra.Command{
 	Long:    "Perform a health check against the MangaHub server.",
 	Example: "mangahub server health",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		format, err := output.GetFormat(cmd)
+		if err != nil {
+			return err
+		}
+
 		degraded, _ := cmd.Flags().GetBool("degraded")
+		status := buildHealthSummary(degraded)
+		if format == output.FormatJSON {
+			output.PrintJSON(cmd, status)
+			return nil
+		}
+		if config.Runtime().Verbose {
+			output.PrintJSON(cmd, status)
+			return nil
+		}
+		if config.Runtime().Quiet {
+			return nil
+		}
 		if degraded {
 			printDegradedHealth(cmd)
 			return nil
@@ -21,6 +42,34 @@ var healthCmd = &cobra.Command{
 func init() {
 	ServerCmd.AddCommand(healthCmd)
 	healthCmd.Flags().Bool("degraded", false, "Show degraded health sample")
+	output.AddFlag(healthCmd)
+}
+
+func buildHealthSummary(degraded bool) map[string]any {
+	overall := "healthy"
+	issues := []string{}
+	if degraded {
+		overall = "degraded"
+		issues = append(issues, "TCP Sync Server is failing to bind to tcp://localhost:9090", "UDP Notifications: No subscribers")
+	}
+
+	return map[string]any{
+		"overall": overall,
+		"components": map[string]string{
+			"http_api":          ternaryStatus(!degraded, "healthy", "healthy"),
+			"tcp_sync":          ternaryStatus(!degraded, "healthy", "error"),
+			"udp_notifications": ternaryStatus(!degraded, "healthy", "warn"),
+			"grpc_internal":     "healthy",
+			"websocket_chat":    "healthy",
+		},
+		"dependencies": map[string]string{
+			"database":        "connected",
+			"cache":           "warm",
+			"background_jobs": ternaryStatus(!degraded, "running", "delayed"),
+		},
+		"notes":   issues,
+		"metrics": map[string]any{"latency_median_ms": ternary(degraded, "28", "12"), "grpc_p99_ms": ternary(degraded, "62", "48"), "active_chat_users": ternary(degraded, "5", "12")},
+	}
 }
 
 func printHealthyHealth(cmd *cobra.Command) {
