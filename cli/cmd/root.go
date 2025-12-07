@@ -20,6 +20,8 @@ import (
 	"github.com/ngocan-dev/mangahub_/cli/cmd/server"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/stats"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/sync"
+	"github.com/ngocan-dev/mangahub_/cli/cmd/system"
+	"github.com/ngocan-dev/mangahub_/cli/cmd/update"
 	"github.com/ngocan-dev/mangahub_/cli/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -33,8 +35,15 @@ var (
 // rootCmd represents the base command when called without any subcommands.
 var rootCmd = &cobra.Command{
 	Use:   "mangahub",
-	Short: "MangaHub CLI for managing manga libraries and progress",
-	Long:  "MangaHub CLI provides commands to register, login, search manga, manage libraries, and track progress.",
+	Short: "MangaHub CLI – manage your manga library, reading progress, and servers.",
+	Long: "MangaHub CLI – manage your manga library, reading progress, and servers.\n\n" +
+		"Usage:\n  mangahub [command]\n\n" +
+		"Top-level commands include:\n" +
+		"  auth, manga, library, progress, server, stats, export, backup, db, chat, config, profile, logs, sync\n\n" +
+		"Use \"mangahub [command] help\" for more information about a command.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return cmd.Help()
+	},
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -50,6 +59,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", defaultPath, "Custom config path (default: ~/.mangahub/config.json)")
 	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "Enable verbose logs")
 	rootCmd.PersistentFlags().BoolVar(&quiet, "quiet", false, "Suppress all non-error output")
+	rootCmd.SilenceUsage = true
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		config.SetRuntimeOptions(verbose, quiet)
@@ -73,4 +83,6 @@ func init() {
 	rootCmd.AddCommand(logs.LogsCmd)
 	rootCmd.AddCommand(configcmd.ConfigCmd)
 	rootCmd.AddCommand(profilecmd.ProfileCmd)
+	rootCmd.AddCommand(update.UpdateCmd)
+	rootCmd.AddCommand(system.SystemCmd)
 }

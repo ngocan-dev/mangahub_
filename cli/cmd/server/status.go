@@ -1,6 +1,8 @@
 package server
 
 import (
+	"github.com/ngocan-dev/mangahub_/cli/internal/config"
+	"github.com/ngocan-dev/mangahub_/cli/internal/output"
 	"github.com/spf13/cobra"
 )
 
@@ -10,7 +12,24 @@ var statusCmd = &cobra.Command{
 	Long:    "Display the current status of the MangaHub server.",
 	Example: "mangahub server status",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		format, err := output.GetFormat(cmd)
+		if err != nil {
+			return err
+		}
+
 		degraded, _ := cmd.Flags().GetBool("degraded")
+		status := buildStatusSummary(degraded)
+		if format == output.FormatJSON {
+			output.PrintJSON(cmd, status)
+			return nil
+		}
+		if config.Runtime().Verbose {
+			output.PrintJSON(cmd, status)
+			return nil
+		}
+		if config.Runtime().Quiet {
+			return nil
+		}
 		if degraded {
 			printDegradedStatus(cmd)
 			return nil
@@ -23,6 +42,46 @@ var statusCmd = &cobra.Command{
 func init() {
 	ServerCmd.AddCommand(statusCmd)
 	statusCmd.Flags().Bool("degraded", false, "Show degraded status sample")
+	output.AddFlag(statusCmd)
+}
+
+func buildStatusSummary(degraded bool) map[string]any {
+	services := []map[string]any{
+		{"name": "HTTP API", "status": ternaryStatus(!degraded, "online", "online"), "address": "localhost:8080", "uptime": ternary(degraded, "45m", "2h 15m"), "load": ternary(degraded, "8 req/min", "12 req/min")},
+		{"name": "TCP Sync", "status": ternaryStatus(!degraded, "online", "error"), "address": "localhost:9090", "uptime": ternary(degraded, "-", "2h 15m"), "load": ternary(degraded, "-", "3 clients")},
+		{"name": "UDP Notifications", "status": ternaryStatus(!degraded, "online", "warn"), "address": "localhost:9091", "uptime": ternary(degraded, "45m", "2h 15m"), "load": ternary(degraded, "0 clients", "8 clients")},
+		{"name": "gRPC Internal", "status": "online", "address": "localhost:9092", "uptime": ternary(degraded, "45m", "2h 15m"), "load": ternary(degraded, "2 req/min", "5 req/min")},
+		{"name": "WebSocket Chat", "status": "online", "address": "localhost:9093", "uptime": ternary(degraded, "45m", "2h 15m"), "load": ternary(degraded, "5 users", "12 users")},
+	}
+
+	overall := "healthy"
+	issues := []string{}
+	if degraded {
+		overall = "degraded"
+		issues = append(issues, "TCP Sync Server: Port 9090 already in use", "UDP Notifications: No clients registered")
+	}
+
+	return map[string]any{
+		"overall":   overall,
+		"services":  services,
+		"database":  map[string]any{"connection": "active", "size": "2.1 MB", "tables": []string{"users", "manga", "user_progress"}, "last_backup": "2024-01-20 12:00:00"},
+		"resources": map[string]string{"memory": "45.2 MB / 512 MB (8.8%)", "cpu": "2.3%", "disk": "892 MB / 10 GB available"},
+		"issues":    issues,
+	}
+}
+
+func ternary(condition bool, whenTrue, whenFalse string) string {
+	if condition {
+		return whenTrue
+	}
+	return whenFalse
+}
+
+func ternaryStatus(ok bool, healthyValue, degradedValue string) string {
+	if ok {
+		return healthyValue
+	}
+	return degradedValue
 }
 
 func printHealthyStatus(cmd *cobra.Command) {
