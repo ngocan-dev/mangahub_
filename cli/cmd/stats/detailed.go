@@ -1,6 +1,10 @@
 package stats
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/ngocan-dev/mangahub_/cli/internal/config"
+	"github.com/ngocan-dev/mangahub_/cli/internal/output"
+	"github.com/spf13/cobra"
+)
 
 var detailedCmd = &cobra.Command{
 	Use:     "detailed",
@@ -8,6 +12,45 @@ var detailedCmd = &cobra.Command{
 	Long:    "Display detailed MangaHub statistics including genre breakdowns and activity timelines.",
 	Example: "mangahub stats detailed",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		format, err := output.GetFormat(cmd)
+		if err != nil {
+			return err
+		}
+
+		details := map[string]any{
+			"genres": []map[string]any{
+				{"name": "Shounen", "manga": 12, "chapters": 3420},
+				{"name": "Seinen", "manga": 6, "chapters": 1110},
+				{"name": "Romance", "manga": 4, "chapters": 230},
+				{"name": "Comedy", "manga": 3, "chapters": 580},
+			},
+			"status": map[string]int{
+				"completed": 28,
+				"reading":   8,
+				"on_hold":   3,
+				"dropped":   3,
+			},
+			"top_manga": []map[string]any{
+				{"title": "One Piece", "chapters_read": 1095, "time_spent": "52h 20m", "rating": "9/10"},
+				{"title": "Naruto", "chapters_read": 700, "time_spent": "33h 00m", "rating": "8/10"},
+				{"title": "Attack on Titan", "chapters_read": 139, "time_spent": "11h 12m", "rating": "Unrated"},
+			},
+		}
+
+		if format == output.FormatJSON {
+			output.PrintJSON(cmd, details)
+			return nil
+		}
+
+		if config.Runtime().Verbose {
+			output.PrintJSON(cmd, details)
+			return nil
+		}
+
+		if config.Runtime().Quiet {
+			return nil
+		}
+
 		cmd.Println("Detailed Reading Statistics")
 		cmd.Println()
 		cmd.Println("By Genre:")
@@ -36,4 +79,5 @@ var detailedCmd = &cobra.Command{
 
 func init() {
 	StatsCmd.AddCommand(detailedCmd)
+	output.AddFlag(detailedCmd)
 }
