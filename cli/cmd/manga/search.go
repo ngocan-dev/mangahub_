@@ -27,6 +27,11 @@ var searchCmd = &cobra.Command{
 	Example: "mangahub manga search \"one piece\"",
 	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		format, err := output.GetFormat(cmd)
+		if err != nil {
+			return err
+		}
+
 		query := args[0]
 
 		cfg := config.ManagerInstance()
@@ -43,6 +48,11 @@ var searchCmd = &cobra.Command{
 		results, err := client.SearchManga(cmd.Context(), query, filters)
 		if err != nil {
 			return err
+		}
+
+		if format == output.FormatJSON {
+			output.PrintJSON(cmd, map[string]any{"results": results})
+			return nil
 		}
 
 		if config.Runtime().Verbose {
@@ -87,6 +97,7 @@ func init() {
 	searchCmd.Flags().String("sort-by", "", "Sort by field (title|chapters|year|popularity)")
 	searchCmd.Flags().String("order", "", "Sort order (asc|desc)")
 	searchCmd.Flags().Int("limit", 0, "Limit number of results")
+	output.AddFlag(searchCmd)
 }
 
 func parseSearchFilters(cmd *cobra.Command) (api.MangaSearchFilters, error) {

@@ -21,6 +21,11 @@ var infoCmd = &cobra.Command{
 	Example: "mangahub manga info one-piece",
 	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		format, err := output.GetFormat(cmd)
+		if err != nil {
+			return err
+		}
+
 		id := args[0]
 		cfg := config.ManagerInstance()
 		if cfg == nil {
@@ -42,6 +47,11 @@ var infoCmd = &cobra.Command{
 			return err
 		}
 
+		if format == output.FormatJSON {
+			output.PrintJSON(cmd, map[string]any{"result": info})
+			return nil
+		}
+
 		if config.Runtime().Verbose {
 			output.PrintJSON(cmd, info)
 			return nil
@@ -59,6 +69,7 @@ var infoCmd = &cobra.Command{
 
 func init() {
 	MangaCmd.AddCommand(infoCmd)
+	output.AddFlag(infoCmd)
 }
 
 func renderMangaInfo(cmd *cobra.Command, info *api.MangaInfoResponse) {

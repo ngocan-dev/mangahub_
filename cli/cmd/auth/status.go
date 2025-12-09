@@ -50,7 +50,7 @@ func runAuthStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	if isExpired(cfg.Data.ExpiresAt) {
-		printSessionExpired(cmd, cfg.Data.Username)
+		printSessionExpired(cmd, cfg.Data.Auth.Username)
 		os.Exit(1)
 	}
 
@@ -108,7 +108,7 @@ func printLoggedInStatus(cmd *cobra.Command, cfg config.Config) {
 		notifications = "enabled"
 	}
 
-	cmd.Printf("✓ You are logged in as %s\n\n", cfg.Username)
+	cmd.Printf("✓ You are logged in as %s\n\n", cfg.Auth.Username)
 	cmd.Println("Session Information:")
 	cmd.Printf("Token expires: %s\n", expires)
 	cmd.Printf("Permissions: %s\n", permissions)

@@ -10,6 +10,7 @@ import (
 
 	"github.com/ngocan-dev/mangahub_/cli/internal/api"
 	"github.com/ngocan-dev/mangahub_/cli/internal/config"
+	"github.com/ngocan-dev/mangahub_/cli/internal/output"
 	"github.com/ngocan-dev/mangahub_/cli/internal/utils"
 	"github.com/spf13/cobra"
 )
@@ -20,6 +21,11 @@ var listCmd = &cobra.Command{
 	Long:    "List all manga saved in your MangaHub library.",
 	Example: "mangahub library list",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		format, err := output.GetFormat(cmd)
+		if err != nil {
+			return err
+		}
+
 		status, _ := cmd.Flags().GetString("status")
 		sortBy, _ := cmd.Flags().GetString("sort-by")
 		order, _ := cmd.Flags().GetString("order")
@@ -66,6 +72,11 @@ var listCmd = &cobra.Command{
 			return err
 		}
 
+		if format == output.FormatJSON {
+			output.PrintJSON(cmd, map[string]any{"results": entries})
+			return nil
+		}
+
 		if config.Runtime().Verbose {
 			printVerbose(cmd, entries)
 			return nil
@@ -101,6 +112,7 @@ func init() {
 	listCmd.Flags().String("status", "", "Filter by status (reading|completed|plan-to-read|on-hold|dropped)")
 	listCmd.Flags().String("sort-by", "", "Sort by (title|rating|chapter|last-updated)")
 	listCmd.Flags().String("order", "asc", "Sort order (asc|desc)")
+	output.AddFlag(listCmd)
 }
 
 func printVerbose(cmd *cobra.Command, entries []api.LibraryEntry) {

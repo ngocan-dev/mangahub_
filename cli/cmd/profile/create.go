@@ -1,6 +1,12 @@
 package profile
 
-import "github.com/spf13/cobra"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/ngocan-dev/mangahub_/cli/internal/config"
+	"github.com/spf13/cobra"
+)
 
 // ProfileCmd manages CLI profiles.
 var ProfileCmd = &cobra.Command{
@@ -15,8 +21,21 @@ var createCmd = &cobra.Command{
 	Long:    "Create a new MangaHub CLI profile with its own configuration.",
 	Example: "mangahub profile create --name work",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// TODO: Implement profile creation
-		cmd.Println("Profile creation is not yet implemented.")
+		name, _ := cmd.Flags().GetString("name")
+		if name == "" {
+			return fmt.Errorf("✗ Profile name is required.")
+		}
+
+		path, err := config.CreateProfile(name)
+		if err != nil {
+			if strings.Contains(err.Error(), "already exists") {
+				return fmt.Errorf("✗ Profile '%s' already exists.", name)
+			}
+			return fmt.Errorf("✗ %v", err)
+		}
+
+		cmd.Printf("✓ Profile created: %s\n", name)
+		cmd.Printf("Path: %s/\n", humanizePath(path))
 		return nil
 	},
 }

@@ -16,6 +16,11 @@ var historyCmd = &cobra.Command{
 	Long:    "Display historical reading activity for your library entries.",
 	Example: "mangahub progress history --manga-id one-piece",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		format, err := output.GetFormat(cmd)
+		if err != nil {
+			return err
+		}
+
 		mangaID, _ := cmd.Flags().GetString("manga-id")
 
 		cfg := config.ManagerInstance()
@@ -27,6 +32,11 @@ var historyCmd = &cobra.Command{
 		records, err := client.ProgressHistory(cmd.Context(), mangaID)
 		if err != nil {
 			return err
+		}
+
+		if format == output.FormatJSON {
+			output.PrintJSON(cmd, map[string]any{"results": records})
+			return nil
 		}
 
 		output.PrintJSON(cmd, records)
@@ -73,4 +83,5 @@ func volumeString(v int) string {
 func init() {
 	ProgressCmd.AddCommand(historyCmd)
 	historyCmd.Flags().String("manga-id", "", "Manga identifier")
+	output.AddFlag(historyCmd)
 }
