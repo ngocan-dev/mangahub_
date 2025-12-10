@@ -1,7 +1,6 @@
 package output
 
 import (
-	"fmt"
 	"strings"
 	"unicode/utf8"
 
@@ -33,7 +32,7 @@ func PrintServerStatusTable(cmd *cobra.Command, st *api.ServerStatus) {
 	}
 
 	for _, svc := range st.Services {
-		cols := []string{svc.Name, formatStatus(svc.Status), svc.Address, svc.Uptime, svc.Load}
+		cols := []string{svc.Name, FormatStatus(svc.Status), svc.Address, svc.Uptime, svc.Load}
 		for i, col := range cols {
 			if runes := utf8.RuneCountInString(col) + 1; runes > widths[i] {
 				widths[i] = runes
@@ -47,12 +46,12 @@ func PrintServerStatusTable(cmd *cobra.Command, st *api.ServerStatus) {
 	cmd.Println(formatRow(headers, widths))
 	cmd.Println(buildBorder("├", "┼", "┤", widths))
 	for _, svc := range st.Services {
-		cmd.Println(formatRow([]string{svc.Name, formatStatus(svc.Status), svc.Address, svc.Uptime, svc.Load}, widths))
+		cmd.Println(formatRow([]string{svc.Name, FormatStatus(svc.Status), svc.Address, svc.Uptime, svc.Load}, widths))
 	}
 	cmd.Println(buildBorder("└", "┴", "┘", widths))
 	cmd.Println()
 
-	cmd.Printf("Overall System Health: %s\n", formatOverall(st.Overall))
+	cmd.Printf("Overall System Health: %s\n", FormatOverall(st.Overall))
 	cmd.Println()
 
 	if len(st.Issues) > 0 {
@@ -65,7 +64,7 @@ func PrintServerStatusTable(cmd *cobra.Command, st *api.ServerStatus) {
 
 	cmd.Println("Database:")
 	if st.Database.Connection != "" {
-		cmd.Printf("Connection: %s\n", formatConnection(st.Database.Connection))
+		cmd.Printf("Connection: %s\n", FormatConnection(st.Database.Connection))
 	}
 	if st.Database.Size != "" {
 		cmd.Printf("Size: %s\n", st.Database.Size)
@@ -123,7 +122,7 @@ func padRight(s string, width int) string {
 	return s + strings.Repeat(" ", pad)
 }
 
-func formatStatus(status string) string {
+func FormatStatus(status string) string {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "online":
 		return "✓ Online"
@@ -136,7 +135,7 @@ func formatStatus(status string) string {
 	}
 }
 
-func formatOverall(overall string) string {
+func FormatOverall(overall string) string {
 	switch strings.ToLower(strings.TrimSpace(overall)) {
 	case "healthy", "ok":
 		return "✓ Healthy"
@@ -149,7 +148,7 @@ func formatOverall(overall string) string {
 	}
 }
 
-func formatConnection(connection string) string {
+func FormatConnection(connection string) string {
 	switch strings.ToLower(strings.TrimSpace(connection)) {
 	case "active", "connected", "online":
 		return "✓ Active"

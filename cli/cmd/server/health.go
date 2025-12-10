@@ -1,6 +1,9 @@
 package server
 
 import (
+	"fmt"
+
+	"github.com/ngocan-dev/mangahub_/cli/internal/api"
 	"github.com/ngocan-dev/mangahub_/cli/internal/config"
 	"github.com/ngocan-dev/mangahub_/cli/internal/output"
 	"github.com/spf13/cobra"
@@ -17,92 +20,89 @@ var healthCmd = &cobra.Command{
 			return err
 		}
 
-		degraded, _ := cmd.Flags().GetBool("degraded")
-		status := buildHealthSummary(degraded)
+		cfg := config.ManagerInstance()
+		if cfg == nil {
+			return fmt.Errorf("configuration not loaded")
+		}
+
+		client := api.NewClient(cfg.Data.BaseURL, cfg.Data.Token)
+		status, err := client.GetServerStatus(cmd.Context())
+		if err != nil {
+			return err
+		}
+
 		if format == output.FormatJSON {
 			output.PrintJSON(cmd, status)
 			return nil
 		}
+
 		if config.Runtime().Verbose {
 			output.PrintJSON(cmd, status)
-			return nil
 		}
+
 		if config.Runtime().Quiet {
 			return nil
 		}
-		if degraded {
-			printDegradedHealth(cmd)
-			return nil
-		}
-		printHealthyHealth(cmd)
+
+		printHealthSummary(cmd, status)
 		return nil
 	},
 }
 
 func init() {
 	ServerCmd.AddCommand(healthCmd)
-	healthCmd.Flags().Bool("degraded", false, "Show degraded health sample")
 	output.AddFlag(healthCmd)
 }
 
-func buildHealthSummary(degraded bool) map[string]any {
-	overall := "healthy"
-	issues := []string{}
-	if degraded {
-		overall = "degraded"
-		issues = append(issues, "TCP Sync Server is failing to bind to tcp://localhost:9090", "UDP Notifications: No subscribers")
+func printHealthSummary(cmd *cobra.Command, status *api.ServerStatus) {
+	if status == nil {
+		return
 	}
 
-	return map[string]any{
-		"overall": overall,
-		"components": map[string]string{
-			"http_api":          ternaryStatus(!degraded, "healthy", "healthy"),
-			"tcp_sync":          ternaryStatus(!degraded, "healthy", "error"),
-			"udp_notifications": ternaryStatus(!degraded, "healthy", "warn"),
-			"grpc_internal":     "healthy",
-			"websocket_chat":    "healthy",
-		},
-		"dependencies": map[string]string{
-			"database":        "connected",
-			"cache":           "warm",
-			"background_jobs": ternaryStatus(!degraded, "running", "delayed"),
-		},
-		"notes":   issues,
-		"metrics": map[string]any{"latency_median_ms": ternary(degraded, "28", "12"), "grpc_p99_ms": ternary(degraded, "62", "48"), "active_chat_users": ternary(degraded, "5", "12")},
+	cmd.Println("MangaHub Server Health")
+	cmd.Println()
+
+	cmd.Printf("Overall: %s\n", output.FormatOverall(status.Overall))
+	cmd.Println()
+
+	if len(status.Issues) > 0 {
+		cmd.Println("Issues:")
+		for _, issue := range status.Issues {
+			cmd.Printf("  ✗ %s\n", issue)
+		}
+		cmd.Println()
 	}
-}
 
-func printHealthyHealth(cmd *cobra.Command) {
-	cmd.Println("MangaHub Server Health")
-	cmd.Println()
-	cmd.Println("HTTP API:           ✓ Healthy (12ms median)")
-	cmd.Println("TCP Sync:           ✓ Healthy (3 connected peers)")
-	cmd.Println("UDP Notifications:  ✓ Healthy (queue depth: 0)")
-	cmd.Println("gRPC Internal:      ✓ Healthy (p99: 48ms)")
-	cmd.Println("WebSocket Chat:     ✓ Healthy (12 active users)")
-	cmd.Println()
-	cmd.Println("Database:           ✓ Connected (postgres @ localhost:5432)")
-	cmd.Println("Cache:              ✓ Warm (hit rate: 91%)")
-	cmd.Println("Background Jobs:    ✓ Running (5 queued)")
-	cmd.Println()
-	cmd.Println("Overall: ✓ Healthy")
-}
+	if len(status.Services) > 0 {
+		cmd.Println("Services:")
+		for _, svc := range status.Services {
+			cmd.Printf("  %s: %s (%s)\n", svc.Name, output.FormatStatus(svc.Status), svc.Load)
+		}
+		cmd.Println()
+	}
 
-func printDegradedHealth(cmd *cobra.Command) {
-	cmd.Println("MangaHub Server Health")
+	cmd.Println("Database:")
+	if status.Database.Connection != "" {
+		cmd.Printf("  Connection: %s\n", output.FormatConnection(status.Database.Connection))
+	}
+	if status.Database.Size != "" {
+		cmd.Printf("  Size: %s\n", status.Database.Size)
+	}
+	if len(status.Database.Tables) > 0 {
+		cmd.Printf("  Tables: %d\n", len(status.Database.Tables))
+	}
+	if status.Database.LastBackup != "" {
+		cmd.Printf("  Last backup: %s\n", status.Database.LastBackup)
+	}
 	cmd.Println()
-	cmd.Println("HTTP API:           ✓ Healthy (28ms median)")
-	cmd.Println("TCP Sync:           ✗ Error  (port collision)")
-	cmd.Println("UDP Notifications:  ⚠ Warn   (no subscribers)")
-	cmd.Println("gRPC Internal:      ✓ Healthy (p99: 62ms)")
-	cmd.Println("WebSocket Chat:     ✓ Healthy (5 active users)")
-	cmd.Println()
-	cmd.Println("Database:           ✓ Connected (postgres @ localhost:5432)")
-	cmd.Println("Cache:              ✓ Warm (hit rate: 88%)")
-	cmd.Println("Background Jobs:    ⚠ Delayed (retrying 2 tasks)")
-	cmd.Println()
-	cmd.Println("Overall: ⚠ Degraded")
-	cmd.Println("Issues:")
-	cmd.Println("  - TCP Sync Server is failing to bind to tcp://localhost:9090")
-	cmd.Println("    Resolution: Free port 9090 or update configuration")
+
+	if status.Resources.Memory != "" {
+		cmd.Printf("Memory Usage: %s\n", status.Resources.Memory)
+	}
+	if status.Resources.CPU != "" {
+		cmd.Printf("CPU Usage: %s\n", status.Resources.CPU)
+	}
+	if status.Resources.Disk != "" {
+		cmd.Printf("Disk Space: %s\n", status.Resources.Disk)
+	}
 }
