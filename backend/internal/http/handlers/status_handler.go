@@ -224,7 +224,7 @@ func (h *StatusHandler) collectDatabase(ctx context.Context) (DatabaseStatus, []
 		issues = append(issues, "database connection is unhealthy")
 	}
 
-	size, lastBackup, err := h.databaseStats()
+	size, lastBackup, err := h.databaseStats(ctx)
 	if err == nil {
 		status.Size = size
 		status.LastBackup = lastBackup
@@ -242,19 +242,24 @@ func (h *StatusHandler) collectDatabase(ctx context.Context) (DatabaseStatus, []
 	return status, issues
 }
 
-func (h *StatusHandler) databaseStats() (string, string, error) {
-	path := h.databaseFilePath()
-	if path == "" {
-		return "", "", fmt.Errorf("cannot determine database path from dsn")
+func (h *StatusHandler) databaseStats(ctx context.Context) (string, string, error) {
+	if h.db == nil {
+		return "", "", fmt.Errorf("database not configured")
 	}
 
-	info, err := os.Stat(path)
-	if err != nil {
+	queryCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+
+	var pageCount, pageSize int64
+	if err := h.db.QueryRowContext(queryCtx, "PRAGMA page_count").Scan(&pageCount); err != nil {
+		return "", "", err
+	}
+	if err := h.db.QueryRowContext(queryCtx, "PRAGMA page_size").Scan(&pageSize); err != nil {
 		return "", "", err
 	}
 
-	size := formatBytes(info.Size())
-	lastBackup := info.ModTime().UTC().Format(time.RFC3339)
+	size := formatBytes(pageCount * pageSize)
+	lastBackup := h.databaseFileModTime()
 
 	return size, lastBackup, nil
 }
@@ -274,6 +279,20 @@ func (h *StatusHandler) databaseFilePath() string {
 	}
 
 	return filepath.Clean(dsn)
+}
+
+func (h *StatusHandler) databaseFileModTime() string {
+	path := h.databaseFilePath()
+	if path == "" {
+		return ""
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return ""
+	}
+
+	return info.ModTime().UTC().Format(time.RFC3339)
 }
 
 func (h *StatusHandler) listTables(ctx context.Context) ([]string, error) {
