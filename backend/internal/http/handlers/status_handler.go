@@ -140,15 +140,35 @@ func (h *StatusHandler) collectServices(ctx context.Context) ([]ServiceStatus, [
 		queueSize = h.writeQueue.Size()
 	}
 
+	httpStatus := "online"
+	httpLoad := fmt.Sprintf("%d queued writes", queueSize)
+	issues := make([]string, 0)
+
+	if h.db == nil {
+		httpStatus = "offline"
+		issues = append(issues, "database connection is not configured")
+	} else {
+		pingCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+		defer cancel()
+
+		if err := h.db.PingContext(pingCtx); err != nil {
+			httpStatus = "offline"
+			httpLoad = "database unreachable"
+			issues = append(issues, fmt.Sprintf("http api cannot reach database: %v", err))
+		} else if h.dbHealth != nil && !h.dbHealth.IsHealthy() {
+			httpStatus = "degraded"
+			httpLoad = "database unhealthy"
+			issues = append(issues, "database connection is unhealthy")
+		}
+	}
+
 	services := []ServiceStatus{{
 		Name:    "HTTP API",
-		Status:  "online",
+		Status:  httpStatus,
 		Address: h.apiAddress,
 		Uptime:  uptime.String(),
-		Load:    fmt.Sprintf("%d queued writes", queueSize),
+		Load:    httpLoad,
 	}}
-
-	issues := make([]string, 0)
 
 	if h.grpcAddress != "" {
 		status, load, err := checkGRPC(ctx, h.grpcAddress)
