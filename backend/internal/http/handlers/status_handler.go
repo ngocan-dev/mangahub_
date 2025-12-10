@@ -203,18 +203,33 @@ func (h *StatusHandler) collectDatabase(ctx context.Context) (DatabaseStatus, []
 	status := DatabaseStatus{}
 	issues := make([]string, 0)
 
-	if h.dbHealth != nil && h.dbHealth.IsHealthy() {
+	if h.db == nil {
+		status.Connection = "error"
+		issues = append(issues, "database connection is not configured")
+		return status, issues
+	}
+
+	pingCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel()
+
+	if err := h.db.PingContext(pingCtx); err == nil {
 		status.Connection = "active"
 	} else {
+		status.Connection = "error"
+		issues = append(issues, fmt.Sprintf("database ping failed: %v", err))
+	}
+
+	if h.dbHealth != nil && !h.dbHealth.IsHealthy() {
 		status.Connection = "error"
 		issues = append(issues, "database connection is unhealthy")
 	}
 
-	size, err := h.databaseSize()
+	size, lastBackup, err := h.databaseStats()
 	if err == nil {
 		status.Size = size
+		status.LastBackup = lastBackup
 	} else {
-		issues = append(issues, fmt.Sprintf("database size unavailable: %v", err))
+		issues = append(issues, fmt.Sprintf("database stats unavailable: %v", err))
 	}
 
 	tables, err := h.listTables(ctx)
@@ -227,18 +242,21 @@ func (h *StatusHandler) collectDatabase(ctx context.Context) (DatabaseStatus, []
 	return status, issues
 }
 
-func (h *StatusHandler) databaseSize() (string, error) {
+func (h *StatusHandler) databaseStats() (string, string, error) {
 	path := h.databaseFilePath()
 	if path == "" {
-		return "", fmt.Errorf("cannot determine database path from dsn")
+		return "", "", fmt.Errorf("cannot determine database path from dsn")
 	}
 
 	info, err := os.Stat(path)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
-	return formatBytes(info.Size()), nil
+	size := formatBytes(info.Size())
+	lastBackup := info.ModTime().UTC().Format(time.RFC3339)
+
+	return size, lastBackup, nil
 }
 
 func (h *StatusHandler) databaseFilePath() string {
