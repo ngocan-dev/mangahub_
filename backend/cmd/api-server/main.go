@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -155,10 +156,18 @@ func main() {
 		udpAddress = ":9091"
 	}
 	udpServerEnabled := os.Getenv("UDP_SERVER_DISABLED") == ""
+	udpMaxClients := 1000
+
+	if maxClientsEnv := os.Getenv("UDP_MAX_CLIENTS"); maxClientsEnv != "" {
+		if maxFromEnv, err := strconv.Atoi(maxClientsEnv); err == nil {
+			udpMaxClients = maxFromEnv
+		}
+	}
 
 	var notificationHandler *handlers.NotificationHandler
 	if udpServerEnabled {
 		udpServer := udp.NewServer(udpAddress, db)
+		udpServer.SetMaxClients(udpMaxClients)
 		udpCtx, udpCancel := context.WithCancel(context.Background())
 		defer udpCancel()
 		go func() {
