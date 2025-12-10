@@ -21,6 +21,7 @@ import (
 	"github.com/ngocan-dev/mangahub/backend/internal/queue"
 	"github.com/ngocan-dev/mangahub/backend/internal/tcp"
 	"github.com/ngocan-dev/mangahub/backend/internal/udp"
+	mangapb "github.com/ngocan-dev/mangahub/backend/proto/manga"
 )
 
 // ServiceStatus describes the status of an individual service.
@@ -398,8 +399,34 @@ func checkGRPC(ctx context.Context, address string) (string, string, error) {
 	if err != nil {
 		return "offline", "unreachable", err
 	}
-	conn.Close()
-	return "online", "responsive", nil
+	defer conn.Close()
+
+	client := mangapb.NewMangaServiceClient(conn)
+	checkCtx, checkCancel := context.WithTimeout(ctx, 750*time.Millisecond)
+	defer checkCancel()
+
+	resp, err := client.SearchManga(checkCtx, &mangapb.SearchMangaRequest{Limit: 1})
+	if err != nil {
+		return "offline", "unreachable", err
+	}
+
+	loadParts := []string{}
+	if resp.Total > 0 {
+		loadParts = append(loadParts, fmt.Sprintf("%d total results", resp.Total))
+	}
+	if len(resp.Results) > 0 {
+		loadParts = append(loadParts, fmt.Sprintf("sample: %s", resp.Results[0].Title))
+	}
+	if resp.Pages > 0 {
+		loadParts = append(loadParts, fmt.Sprintf("page %d/%d", resp.Page, resp.Pages))
+	}
+
+	load := "no manga records"
+	if len(loadParts) > 0 {
+		load = strings.Join(loadParts, " | ")
+	}
+
+	return "online", load, nil
 }
 
 func checkWebSocket(ctx context.Context, address string) (string, string, error) {
