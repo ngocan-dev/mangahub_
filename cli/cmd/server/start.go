@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ngocan-dev/mangahub_/cli/internal/api"
+	"github.com/ngocan-dev/mangahub_/cli/internal/config"
+	"github.com/ngocan-dev/mangahub_/cli/internal/output"
 	serverstate "github.com/ngocan-dev/mangahub_/cli/internal/server"
 	"github.com/spf13/cobra"
 )
@@ -26,6 +29,11 @@ var startCmd = &cobra.Command{
 		"mangahub server start --udp-only",
 	}, "\n"),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		format, err := output.GetFormat(cmd)
+		if err != nil {
+			return err
+		}
+
 		httpOnly, _ := cmd.Flags().GetBool("http-only")
 		tcpOnly, _ := cmd.Flags().GetBool("tcp-only")
 		udpOnly, _ := cmd.Flags().GetBool("udp-only")
@@ -34,29 +42,30 @@ var startCmd = &cobra.Command{
 			return err
 		}
 
-		components := resolveComponents(httpOnly, tcpOnly, udpOnly)
-		serverstate.MarkRunning(components)
-
-		cmd.Println("Starting MangaHub Server Components...")
-		cmd.Println()
-		for idx, component := range components {
-			cmd.Println(fmt.Sprintf("[%d/%d] %s", idx+1, len(components), component.Name))
-			for _, line := range component.StartMessages {
-				cmd.Println(line)
-			}
-			cmd.Println()
+		cfg := config.ManagerInstance()
+		if cfg == nil {
+			return fmt.Errorf("configuration not loaded")
 		}
-		cmd.Println("All servers started successfully!")
-		cmd.Println()
-		cmd.Println("Server URLs:")
-		cmd.Println("HTTP API:    http://localhost:8080")
-		cmd.Println("TCP Sync:    tcp://localhost:9090")
-		cmd.Println("UDP Notify:  udp://localhost:9091")
-		cmd.Println("gRPC:        grpc://localhost:9092")
-		cmd.Println("WebSocket:   ws://localhost:9093")
-		cmd.Println()
-		cmd.Println("Logs: tail -f ~/.mangahub/logs/server.log")
-		cmd.Println("Stop: mangahub server stop")
+
+		client := api.NewClient(cfg.Data.BaseURL, cfg.Data.Token)
+		status, err := serverstate.FetchStatus(cmd.Context(), client)
+		if err != nil {
+			return err
+		}
+
+		status = serverstate.FilterByMode(status, httpOnly, tcpOnly, udpOnly)
+
+		if format == output.FormatJSON {
+			output.PrintJSON(cmd, status)
+			return nil
+		}
+
+		if config.Runtime().Verbose {
+			output.PrintJSON(cmd, status)
+		}
+
+		cmd.Println("MangaHub Server Status")
+		output.PrintServerStatusTable(cmd, status)
 		return nil
 	},
 }
@@ -66,6 +75,7 @@ func init() {
 	startCmd.Flags().Bool("http-only", false, "Start only the HTTP server")
 	startCmd.Flags().Bool("tcp-only", false, "Start only the TCP server")
 	startCmd.Flags().Bool("udp-only", false, "Start only the UDP server")
+	output.AddFlag(startCmd)
 }
 
 func validateStartFlags(httpOnly, tcpOnly, udpOnly bool) error {
@@ -79,18 +89,4 @@ func validateStartFlags(httpOnly, tcpOnly, udpOnly bool) error {
 		return fmt.Errorf("only one of --http-only, --tcp-only, or --udp-only can be set")
 	}
 	return nil
-}
-
-func resolveComponents(httpOnly, tcpOnly, udpOnly bool) []serverstate.Component {
-	components := serverstate.Components()
-	if httpOnly {
-		return []serverstate.Component{components[0]}
-	}
-	if tcpOnly {
-		return []serverstate.Component{components[1]}
-	}
-	if udpOnly {
-		return []serverstate.Component{components[2]}
-	}
-	return components
 }
