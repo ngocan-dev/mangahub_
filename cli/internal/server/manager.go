@@ -1,6 +1,13 @@
 package server
 
-import "sync"
+import (
+	"fmt"
+	"strings"
+	"sync"
+
+	"github.com/ngocan-dev/mangahub_/cli/internal/api"
+	"github.com/ngocan-dev/mangahub_/cli/internal/output"
+)
 
 type Component struct {
 	Key           string
@@ -20,95 +27,8 @@ var (
 		running    bool
 		degraded   bool
 		components []Component
-	}{components: defaultComponents()}
+	}{}
 )
-
-// defaultComponents returns the predefined MangaHub server components.
-func defaultComponents() []Component {
-	return []Component{
-		{
-			Key:     "http",
-			Name:    "HTTP API Server",
-			Address: "http://localhost:8080",
-			StartMessages: []string{
-				"      ✓ Starting on http://localhost:8080",
-				"      ✓ Database connection established",
-				"      ✓ JWT middleware loaded",
-				"      ✓ 12 routes registered",
-				"      Status: Running",
-			},
-			StatusLabel: "✓ Online",
-			Load:        "12 req/min",
-			Uptime:      "2h 15m",
-			Indicator:   "HTTP API",
-			StopLabel:   "HTTP API stopped",
-		},
-		{
-			Key:     "tcp",
-			Name:    "TCP Sync Server",
-			Address: "tcp://localhost:9090",
-			StartMessages: []string{
-				"      ✓ Starting on tcp://localhost:9090",
-				"      ✓ Connection pool initialized (max: 100)",
-				"      ✓ Broadcast channels ready",
-				"      Status: Listening for connections",
-			},
-			StatusLabel: "✓ Online",
-			Load:        "3 clients",
-			Uptime:      "2h 15m",
-			Indicator:   "TCP Sync",
-			StopLabel:   "TCP Sync stopped",
-		},
-		{
-			Key:     "udp",
-			Name:    "UDP Notification Server",
-			Address: "udp://localhost:9091",
-			StartMessages: []string{
-				"      ✓ Starting on udp://localhost:9091",
-				"      ✓ Client registry initialized",
-				"      ✓ Notification queue ready",
-				"      Status: Ready for broadcasts",
-			},
-			StatusLabel: "✓ Online",
-			Load:        "8 clients",
-			Uptime:      "2h 15m",
-			Indicator:   "UDP Notifications",
-			StopLabel:   "UDP Notifications stopped",
-		},
-		{
-			Key:     "grpc",
-			Name:    "gRPC Internal Service",
-			Address: "grpc://localhost:9092",
-			StartMessages: []string{
-				"      ✓ Starting on grpc://localhost:9092",
-				"      ✓ 3 services registered",
-				"      ✓ Protocol buffers loaded",
-				"      Status: Serving",
-			},
-			StatusLabel: "✓ Online",
-			Load:        "5 req/min",
-			Uptime:      "2h 15m",
-			Indicator:   "gRPC Internal",
-			StopLabel:   "gRPC service stopped",
-		},
-		{
-			Key:     "ws",
-			Name:    "WebSocket Chat Server",
-			Address: "ws://localhost:9093",
-			StartMessages: []string{
-				"      ✓ Starting on ws://localhost:9093",
-				"      ✓ Chat rooms initialized",
-				"      ✓ User registry ready",
-				"      Status: Ready for connections",
-			},
-			StatusLabel: "✓ Online",
-			Load:        "12 users",
-			Uptime:      "2h 15m",
-			Indicator:   "WebSocket Chat",
-			StopLabel:   "WebSocket Chat stopped",
-		},
-	}
-}
 
 // Components returns the current component definitions.
 func Components() []Component {
@@ -119,8 +39,37 @@ func Components() []Component {
 	return copy
 }
 
+// UpdateFromStatus refreshes component metadata using live server status data.
+func UpdateFromStatus(status *api.ServerStatus) {
+	stateMu.Lock()
+	defer stateMu.Unlock()
+
+	if status == nil {
+		state.components = nil
+		return
+	}
+
+	components := make([]Component, 0, len(status.Services))
+	for _, svc := range status.Services {
+		key := strings.ToLower(strings.ReplaceAll(svc.Name, " ", "-"))
+		components = append(components, Component{
+			Key:         key,
+			Name:        svc.Name,
+			Address:     svc.Address,
+			StatusLabel: output.FormatStatus(svc.Status),
+			Load:        svc.Load,
+			Uptime:      svc.Uptime,
+			Indicator:   svc.Name,
+			StopLabel:   fmt.Sprintf("%s stopped", svc.Name),
+		})
+	}
+
+	state.components = components
+	state.degraded = strings.EqualFold(status.Overall, "degraded")
+}
+
 // MarkRunning records the running components and mode.
-func MarkRunning(components []Component) {
+func MarkRunning() {
 	stateMu.Lock()
 	defer stateMu.Unlock()
 	state.running = true
