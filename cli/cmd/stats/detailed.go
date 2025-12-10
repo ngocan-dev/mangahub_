@@ -1,8 +1,13 @@
 package stats
 
 import (
+	"fmt"
+	"strconv"
+
+	"github.com/ngocan-dev/mangahub_/cli/internal/api"
 	"github.com/ngocan-dev/mangahub_/cli/internal/config"
 	"github.com/ngocan-dev/mangahub_/cli/internal/output"
+	"github.com/ngocan-dev/mangahub_/cli/internal/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -17,33 +22,37 @@ var detailedCmd = &cobra.Command{
 			return err
 		}
 
-		details := map[string]any{
-			"genres": []map[string]any{
-				{"name": "Shounen", "manga": 12, "chapters": 3420},
-				{"name": "Seinen", "manga": 6, "chapters": 1110},
-				{"name": "Romance", "manga": 4, "chapters": 230},
-				{"name": "Comedy", "manga": 3, "chapters": 580},
-			},
-			"status": map[string]int{
-				"completed": 28,
-				"reading":   8,
-				"on_hold":   3,
-				"dropped":   3,
-			},
-			"top_manga": []map[string]any{
-				{"title": "One Piece", "chapters_read": 1095, "time_spent": "52h 20m", "rating": "9/10"},
-				{"title": "Naruto", "chapters_read": 700, "time_spent": "33h 00m", "rating": "8/10"},
-				{"title": "Attack on Titan", "chapters_read": 139, "time_spent": "11h 12m", "rating": "Unrated"},
-			},
+		cfg := config.ManagerInstance()
+		if cfg == nil {
+			return fmt.Errorf("configuration not loaded")
+		}
+
+		client := api.NewClient(cfg.Data.BaseURL, cfg.Data.Token)
+		period, _ := cmd.Flags().GetString("time-period")
+		includeGoals, _ := cmd.Flags().GetBool("include-goals")
+		var yearPtr, monthPtr *int
+		if cmd.Flags().Changed("year") {
+			y, _ := cmd.Flags().GetInt("year")
+			yearPtr = &y
+		}
+		if cmd.Flags().Changed("month") {
+			m, _ := cmd.Flags().GetInt("month")
+			monthPtr = &m
+		}
+
+		req := api.ReadingAnalyticsRequest{TimePeriod: period, Year: yearPtr, Month: monthPtr, IncludeGoals: includeGoals}
+		stats, err := client.GetReadingAnalytics(cmd.Context(), req)
+		if err != nil {
+			return err
 		}
 
 		if format == output.FormatJSON {
-			output.PrintJSON(cmd, details)
+			output.PrintJSON(cmd, stats)
 			return nil
 		}
 
 		if config.Runtime().Verbose {
-			output.PrintJSON(cmd, details)
+			output.PrintJSON(cmd, stats)
 			return nil
 		}
 
@@ -53,26 +62,52 @@ var detailedCmd = &cobra.Command{
 
 		cmd.Println("Detailed Reading Statistics")
 		cmd.Println()
-		cmd.Println("By Genre:")
-		cmd.Println("• Shounen: 12 manga (3,420 chapters)")
-		cmd.Println("• Seinen: 6 manga (1,110 chapters)")
-		cmd.Println("• Romance: 4 manga (230 chapters)")
-		cmd.Println("• Comedy: 3 manga (580 chapters)")
-		cmd.Println()
-		cmd.Println("By Status:")
-		cmd.Println("• Completed: 28")
-		cmd.Println("• Reading: 8")
-		cmd.Println("• On-Hold: 3")
-		cmd.Println("• Dropped: 3")
-		cmd.Println()
-		cmd.Println("Top 10 Read Manga:")
-		cmd.Println("┌───────────────────────┬──────────────┬─────────────┬──────────┐")
-		cmd.Println("│ Title                 │ Chapters Read│ Time Spent  │ Rating   │")
-		cmd.Println("├───────────────────────┼──────────────┼─────────────┼──────────┤")
-		cmd.Println("│ One Piece             │ 1,095        │ 52h 20m     │ 9/10     │")
-		cmd.Println("│ Naruto                │ 700          │ 33h 00m     │ 8/10     │")
-		cmd.Println("│ Attack on Titan       │ 139          │ 11h 12m     │ Unrated  │")
-		cmd.Println("└───────────────────────┴──────────────┴─────────────┴──────────┘")
+
+		if len(stats.FavoriteGenres) > 0 {
+			cmd.Println("By Genre:")
+			table := utils.Table{Headers: []string{"Genre", "Manga", "Chapters"}}
+			for _, genre := range stats.FavoriteGenres {
+				table.AddRow(genre.Genre, fmt.Sprintf("%d", genre.Count), fmt.Sprintf("%d", genre.Chapters))
+			}
+			cmd.Println(table.Render())
+			cmd.Println()
+		}
+
+		if len(stats.MonthlyStats) > 0 {
+			cmd.Println("Recent Monthly Activity:")
+			table := utils.Table{Headers: []string{"Month", "Chapters", "Completed", "Started"}}
+			for _, m := range stats.MonthlyStats {
+				month := fmt.Sprintf("%04d-%02d", m.Year, m.Month)
+				table.AddRow(month, fmt.Sprintf("%d", m.ChaptersRead), fmt.Sprintf("%d", m.MangaCompleted), fmt.Sprintf("%d", m.MangaStarted))
+			}
+			cmd.Println(table.Render())
+			cmd.Println()
+		}
+
+		if len(stats.YearlyStats) > 0 {
+			cmd.Println("Yearly Trends:")
+			table := utils.Table{Headers: []string{"Year", "Chapters", "Completed", "Started", "Active Days"}}
+			for _, y := range stats.YearlyStats {
+				table.AddRow(strconv.Itoa(y.Year), fmt.Sprintf("%d", y.ChaptersRead), fmt.Sprintf("%d", y.MangaCompleted), fmt.Sprintf("%d", y.MangaStarted), fmt.Sprintf("%d", y.TotalDays))
+			}
+			cmd.Println(table.Render())
+			cmd.Println()
+		}
+
+		if len(stats.Goals) > 0 {
+			cmd.Println("Reading Goals:")
+			table := utils.Table{Headers: []string{"Goal", "Progress", "Target", "Status", "Window"}}
+			for _, g := range stats.Goals {
+				status := "In Progress"
+				if g.Completed {
+					status = "Completed"
+				}
+				window := fmt.Sprintf("%s → %s", g.StartDate, g.EndDate)
+				table.AddRow(g.GoalType, fmt.Sprintf("%d", g.CurrentValue), fmt.Sprintf("%d", g.TargetValue), status, window)
+			}
+			cmd.Println(table.Render())
+		}
+
 		return nil
 	},
 }
@@ -80,4 +115,8 @@ var detailedCmd = &cobra.Command{
 func init() {
 	StatsCmd.AddCommand(detailedCmd)
 	output.AddFlag(detailedCmd)
+	detailedCmd.Flags().String("time-period", "", "Analytics time period (all_time|year|month|week)")
+	detailedCmd.Flags().Int("year", 0, "Filter analytics by year")
+	detailedCmd.Flags().Int("month", 0, "Filter analytics by month")
+	detailedCmd.Flags().Bool("include-goals", false, "Include reading goals progress")
 }

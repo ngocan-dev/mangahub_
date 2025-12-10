@@ -1,8 +1,12 @@
 package stats
 
 import (
+	"fmt"
+
+	"github.com/ngocan-dev/mangahub_/cli/internal/api"
 	"github.com/ngocan-dev/mangahub_/cli/internal/config"
 	"github.com/ngocan-dev/mangahub_/cli/internal/output"
+	"github.com/ngocan-dev/mangahub_/cli/internal/utils"
 	"github.com/spf13/cobra"
 )
 
@@ -25,28 +29,25 @@ var overviewCmd = &cobra.Command{
 			return err
 		}
 
-		summary := map[string]any{
-			"total_manga_read":         42,
-			"total_chapters_read":      9832,
-			"average_chapters_per_day": 27.4,
-			"reading_streak_days":      45,
-			"most_active_day":          "2024-01-12",
-			"most_active_day_count":    312,
-			"favorite_genre":           "Shounen",
-			"top_manga": map[string]any{
-				"title":         "One Piece",
-				"chapters_read": 1095,
-			},
-			"time_spent_hours": 184,
+		cfg := config.ManagerInstance()
+		if cfg == nil {
+			return fmt.Errorf("configuration not loaded")
+		}
+
+		client := api.NewClient(cfg.Data.BaseURL, cfg.Data.Token)
+		force, _ := cmd.Flags().GetBool("force")
+		stats, err := client.GetReadingStatistics(cmd.Context(), force)
+		if err != nil {
+			return err
 		}
 
 		if format == output.FormatJSON {
-			output.PrintJSON(cmd, summary)
+			output.PrintJSON(cmd, stats)
 			return nil
 		}
 
 		if config.Runtime().Verbose {
-			output.PrintJSON(cmd, summary)
+			output.PrintJSON(cmd, stats)
 			return nil
 		}
 
@@ -56,14 +57,38 @@ var overviewCmd = &cobra.Command{
 
 		cmd.Println("Reading Statistics Overview")
 		cmd.Println()
-		cmd.Println("Total Manga Read: 42")
-		cmd.Println("Total Chapters Read: 9,832")
-		cmd.Println("Average Chapters per Day: 27.4")
-		cmd.Println("Reading Streak: 45 days")
-		cmd.Println("Most Active Day: 2024-01-12 (312 chapters)")
-		cmd.Println("Favorite Genre: Shounen")
-		cmd.Println("Top Manga: One Piece (1,095 chapters read)")
-		cmd.Println("Time Spent Reading: 184 hours")
+		cmd.Printf("Total Manga Read: %d\n", stats.TotalMangaRead)
+		cmd.Printf("Currently Reading: %d\n", stats.TotalMangaReading)
+		cmd.Printf("Planned: %d\n", stats.TotalMangaPlanned)
+		cmd.Printf("Total Chapters Read: %d\n", stats.TotalChaptersRead)
+		cmd.Printf("Average Rating: %.2f\n", stats.AverageRating)
+		cmd.Printf("Reading Streak: %d days (longest %d)\n", stats.CurrentStreakDays, stats.LongestStreakDays)
+		if stats.TotalReadingTimeHours > 0 {
+			cmd.Printf("Time Spent Reading: %.1f hours\n", stats.TotalReadingTimeHours)
+		}
+
+		if len(stats.FavoriteGenres) > 0 {
+			cmd.Println()
+			cmd.Println("Top Genres:")
+			table := utils.Table{Headers: []string{"Genre", "Manga", "Chapters"}}
+			for _, g := range stats.FavoriteGenres {
+				table.AddRow(g.Genre, fmt.Sprintf("%d", g.Count), fmt.Sprintf("%d", g.Chapters))
+			}
+			cmd.Println(table.Render())
+		}
+
+		if len(stats.YearlyStats) > 0 {
+			cmd.Println()
+			cmd.Println("Yearly Summary:")
+			table := utils.Table{Headers: []string{"Year", "Chapters", "Completed", "Started", "Active Days"}}
+			for _, y := range stats.YearlyStats {
+				table.AddRow(fmt.Sprintf("%d", y.Year), fmt.Sprintf("%d", y.ChaptersRead), fmt.Sprintf("%d", y.MangaCompleted), fmt.Sprintf("%d", y.MangaStarted), fmt.Sprintf("%d", y.TotalDays))
+			}
+			cmd.Println(table.Render())
+		}
+
+		cmd.Println()
+		cmd.Printf("Last Calculated: %s\n", stats.LastCalculatedAt)
 		return nil
 	},
 }
@@ -71,4 +96,5 @@ var overviewCmd = &cobra.Command{
 func init() {
 	StatsCmd.AddCommand(overviewCmd)
 	output.AddFlag(overviewCmd)
+	overviewCmd.Flags().Bool("force", false, "Force recalculation of statistics")
 }
