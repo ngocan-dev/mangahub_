@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -68,6 +69,7 @@ type StatusHandler struct {
 	grpcAddress string
 	tcpAddress  string
 	udpAddress  string
+	wsAddress   string
 }
 
 // NewStatusHandler builds a new StatusHandler with the required dependencies.
@@ -97,6 +99,11 @@ func (h *StatusHandler) SetAddresses(api, grpcAddr, tcpAddr, udpAddr string) {
 	h.grpcAddress = grpcAddr
 	h.tcpAddress = tcpAddr
 	h.udpAddress = udpAddr
+}
+
+// SetWSAddress configures the WebSocket chat server address.
+func (h *StatusHandler) SetWSAddress(addr string) {
+	h.wsAddress = addr
 }
 
 // GetStatus aggregates live status information for the CLI.
@@ -210,6 +217,21 @@ func (h *StatusHandler) collectServices(ctx context.Context) ([]ServiceStatus, [
 			Address: h.udpAddress,
 			Uptime:  uptime.String(),
 			Load:    udpLoad,
+		})
+	}
+
+	if h.wsAddress != "" {
+		status, load, err := checkWebSocket(ctx, h.wsAddress)
+		if err != nil {
+			issues = append(issues, fmt.Sprintf("WebSocket chat server unreachable: %v", err))
+		}
+
+		services = append(services, ServiceStatus{
+			Name:    "WebSocket Chat",
+			Status:  status,
+			Address: h.wsAddress,
+			Uptime:  uptime.String(),
+			Load:    load,
 		})
 	}
 
@@ -378,6 +400,57 @@ func checkGRPC(ctx context.Context, address string) (string, string, error) {
 	}
 	conn.Close()
 	return "online", "responsive", nil
+}
+
+func checkWebSocket(ctx context.Context, address string) (string, string, error) {
+	url := address
+	switch {
+	case strings.HasPrefix(address, "ws://"):
+		url = "http://" + strings.TrimPrefix(address, "ws://")
+	case strings.HasPrefix(address, "wss://"):
+		url = "https://" + strings.TrimPrefix(address, "wss://")
+	case !strings.HasPrefix(address, "http://") && !strings.HasPrefix(address, "https://"):
+		url = "http://" + strings.TrimPrefix(address, "//")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSuffix(url, "/")+"/status", nil)
+	if err != nil {
+		return "offline", "unreachable", err
+	}
+
+	client := &http.Client{Timeout: 750 * time.Millisecond}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "offline", "unreachable", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return "offline", fmt.Sprintf("status %d", resp.StatusCode), fmt.Errorf("websocket status returned %d", resp.StatusCode)
+	}
+
+	var wsStatus struct {
+		Running bool   `json:"running"`
+		Clients int    `json:"clients"`
+		Rooms   int    `json:"rooms"`
+		Uptime  string `json:"uptime"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&wsStatus); err != nil {
+		return "offline", "invalid status payload", err
+	}
+
+	status := "offline"
+	if wsStatus.Running {
+		status = "online"
+	}
+
+	load := fmt.Sprintf("%d clients, %d rooms", wsStatus.Clients, wsStatus.Rooms)
+	if wsStatus.Uptime != "" {
+		load = fmt.Sprintf("%s | %s", wsStatus.Uptime, load)
+	}
+
+	return status, load, nil
 }
 
 func formatBytes(bytes int64) string {
