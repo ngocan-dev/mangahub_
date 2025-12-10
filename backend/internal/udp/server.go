@@ -21,8 +21,11 @@ type Server struct {
 	clients        map[string]*Client  // Key: address:userID
 	clientsByUser  map[int64][]*Client // Clients grouped by user
 	clientsByNovel map[int64][]*Client // Clients grouped by novel subscription
+	maxClients     int
 	mu             sync.RWMutex
 }
+
+const defaultMaxClients = 1000
 
 // NewServer creates a new UDP server instance
 func NewServer(address string, db *sql.DB) *Server {
@@ -32,6 +35,7 @@ func NewServer(address string, db *sql.DB) *Server {
 		clients:        make(map[string]*Client),
 		clientsByUser:  make(map[int64][]*Client),
 		clientsByNovel: make(map[int64][]*Client),
+		maxClients:     defaultMaxClients,
 	}
 }
 
@@ -154,6 +158,12 @@ func (s *Server) handleRegister(ctx context.Context, packet *Packet, addr *net.U
 			s.updateClientSubscriptions(existingClient, req.NovelIDs, req.AllNovels)
 		}
 	} else {
+		// Enforce capacity limits before adding a new client
+		if s.isAtCapacity() {
+			s.sendError(addr, "server_capacity", "server at capacity; try again later")
+			return
+		}
+
 		// Create new client
 		novelIDs := req.NovelIDs
 		if req.AllNovels {
@@ -161,7 +171,10 @@ func (s *Server) handleRegister(ctx context.Context, packet *Packet, addr *net.U
 		}
 
 		client := NewClient(addr, userID, novelIDs, req.AllNovels, req.DeviceID)
-		s.addClient(client)
+		if err := s.addClient(client); err != nil {
+			s.sendError(addr, "server_capacity", err.Error())
+			return
+		}
 
 		// Record subscription in database
 		go s.recordSubscription(ctx, client)
@@ -218,9 +231,13 @@ func (s *Server) handleUnregister(ctx context.Context, packet *Packet, addr *net
 }
 
 // addClient adds a client to the notification list
-func (s *Server) addClient(client *Client) {
+func (s *Server) addClient(client *Client) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	if s.maxClients > 0 && len(s.clients) >= s.maxClients {
+		return fmt.Errorf("server at capacity; try again later")
+	}
 
 	clientKey := client.GetKey()
 	s.clients[clientKey] = client
@@ -236,6 +253,8 @@ func (s *Server) addClient(client *Client) {
 			s.clientsByNovel[novelID] = append(s.clientsByNovel[novelID], client)
 		}
 	}
+
+	return nil
 }
 
 // updateClientSubscriptions updates a client's novel subscriptions
@@ -310,6 +329,21 @@ func (s *Server) removeClient(clientKey string) {
 			}
 		}
 	}
+}
+
+// SetMaxClients updates the maximum allowed concurrent clients (<=0 disables the limit)
+func (s *Server) SetMaxClients(max int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.maxClients = max
+}
+
+func (s *Server) isAtCapacity() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.maxClients > 0 && len(s.clients) >= s.maxClients
 }
 
 // sendPacket sends a UDP packet to an address

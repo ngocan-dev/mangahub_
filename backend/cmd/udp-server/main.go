@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	_ "modernc.org/sqlite"
@@ -18,6 +19,7 @@ func main() {
 	// Parse command line flags
 	address := flag.String("address", ":9091", "UDP server address")
 	dbPath := flag.String("db", "file:data/mangahub.db?_foreign_keys=on", "Database connection string")
+	maxClients := flag.Int("max-clients", 1000, "Maximum concurrent UDP notification clients (0 for unlimited)")
 	flag.Parse()
 
 	// Open database connection
@@ -29,6 +31,13 @@ func main() {
 
 	// Create UDP server
 	server := udp.NewServer(*address, db)
+	server.SetMaxClients(*maxClients)
+
+	if maxClientsEnv := os.Getenv("UDP_MAX_CLIENTS"); maxClientsEnv != "" {
+		if maxFromEnv, err := strconv.Atoi(maxClientsEnv); err == nil {
+			server.SetMaxClients(maxFromEnv)
+		}
+	}
 
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
