@@ -27,6 +27,13 @@ type Server struct {
 	running        atomic.Bool
 }
 
+// Stats describes current runtime state of the UDP server.
+type Stats struct {
+	Running    bool
+	Clients    int
+	MaxClients int
+}
+
 const defaultMaxClients = 1000
 
 // NewServer creates a new UDP server instance
@@ -91,6 +98,18 @@ func (s *Server) Start(ctx context.Context) error {
 // IsRunning reports whether the UDP server is actively listening for packets.
 func (s *Server) IsRunning() bool {
 	return s.running.Load()
+}
+
+// Stats returns current runtime metrics for the UDP server.
+func (s *Server) Stats() Stats {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return Stats{
+		Running:    s.running.Load(),
+		Clients:    len(s.clients),
+		MaxClients: s.maxClients,
+	}
 }
 
 // handlePacket handles an incoming UDP packet
