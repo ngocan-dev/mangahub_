@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ngocan-dev/mangahub/backend/internal/auth"
@@ -23,6 +24,7 @@ type Server struct {
 	clientsByNovel map[int64][]*Client // Clients grouped by novel subscription
 	maxClients     int
 	mu             sync.RWMutex
+	running        atomic.Bool
 }
 
 const defaultMaxClients = 1000
@@ -51,6 +53,8 @@ func (s *Server) Start(ctx context.Context) error {
 		return err
 	}
 	s.conn = conn
+	s.running.Store(true)
+	defer s.running.Store(false)
 	defer conn.Close()
 
 	log.Printf("UDP notification server listening on %s", s.address)
@@ -82,6 +86,11 @@ func (s *Server) Start(ctx context.Context) error {
 			go s.handlePacket(ctx, buffer[:n], clientAddr)
 		}
 	}
+}
+
+// IsRunning reports whether the UDP server is actively listening for packets.
+func (s *Server) IsRunning() bool {
+	return s.running.Load()
 }
 
 // handlePacket handles an incoming UDP packet
