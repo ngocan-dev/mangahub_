@@ -158,12 +158,21 @@ func (h *StatusHandler) collectServices(ctx context.Context) ([]ServiceStatus, [
 	}
 
 	if h.tcpServer != nil {
+		stats := h.tcpServer.Stats()
 		svcStatus := "offline"
-		if h.tcpServer.IsRunning() {
-			svcStatus = "online"
-		}
+		load := "not running"
 
-		if svcStatus != "online" {
+		if stats.Running {
+			svcStatus = "online"
+			if stats.MaxClients > 0 {
+				load = fmt.Sprintf("%d/%d clients", stats.Clients, stats.MaxClients)
+				if stats.Clients >= stats.MaxClients {
+					issues = append(issues, "TCP sync server at capacity")
+				}
+			} else {
+				load = fmt.Sprintf("%d clients", stats.Clients)
+			}
+		} else {
 			issues = append(issues, "TCP sync server is not accepting connections")
 		}
 
@@ -172,18 +181,26 @@ func (h *StatusHandler) collectServices(ctx context.Context) ([]ServiceStatus, [
 			Status:  svcStatus,
 			Address: h.tcpAddress,
 			Uptime:  uptime.String(),
-			Load:    fmt.Sprintf("%d clients", h.tcpServer.GetClientCount()),
+			Load:    load,
 		})
 	}
 
 	if h.udpServer != nil {
-		clients := h.udpServer.GetClientCount()
+		stats := h.udpServer.Stats()
 		udpStatus := "offline"
-		udpLoad := fmt.Sprintf("%d clients", clients)
-		if h.udpServer.IsRunning() {
+		udpLoad := "not running"
+
+		if stats.Running {
 			udpStatus = "online"
+			if stats.MaxClients > 0 {
+				udpLoad = fmt.Sprintf("%d/%d clients", stats.Clients, stats.MaxClients)
+				if stats.Clients >= stats.MaxClients {
+					issues = append(issues, "UDP notification server at capacity")
+				}
+			} else {
+				udpLoad = fmt.Sprintf("%d clients", stats.Clients)
+			}
 		} else {
-			udpLoad = "not running"
 			issues = append(issues, "UDP notification server is not accepting packets")
 		}
 
