@@ -58,6 +58,7 @@ func startTCPServerWithRestart(ctx context.Context, server *tcp.Server, address 
 }
 
 func main() {
+	startTime := time.Now()
 	// Mở database từ đúng thư mục Migration
 	dsn := "file:data/mangahub.db?_foreign_keys=on"
 
@@ -165,8 +166,9 @@ func main() {
 	}
 
 	var notificationHandler *handlers.NotificationHandler
+	var udpServer *udp.Server
 	if udpServerEnabled {
-		udpServer := udp.NewServer(udpAddress, db)
+		udpServer = udp.NewServer(udpAddress, db)
 		udpServer.SetMaxClients(udpMaxClients)
 		udpCtx, udpCancel := context.WithCancel(context.Background())
 		defer udpCancel()
@@ -183,6 +185,16 @@ func main() {
 		log.Println("UDP notification server disabled; chapter notifications will be unavailable")
 		notificationHandler = handlers.NewNotificationHandler(db, nil)
 	}
+
+	statusHandler := handlers.NewStatusHandler(startTime, db, healthMonitor, writeQueue, dsn)
+	statusHandler.SetTCPServer(tcpServer)
+	if udpServer != nil {
+		statusHandler.SetUDPServer(udpServer)
+	}
+
+	apiAddress := ":8080"
+	grpcAddress := os.Getenv("GRPC_SERVER_ADDR")
+	statusHandler.SetAddresses(apiAddress, grpcAddress, tcpAddress, udpAddress)
 
 	// Initialize rate limiter for handling 50-100 concurrent users
 	// API response times remain under 500ms
@@ -201,6 +213,8 @@ func main() {
 
 	// Route UC-001: Register
 	r.POST("/register", userHandler.Register)
+
+	r.GET("/server/status", statusHandler.GetStatus)
 
 	// Route: Login
 	r.POST("/login", authHandler.Login)
