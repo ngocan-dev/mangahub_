@@ -177,16 +177,22 @@ func (h *StatusHandler) collectServices(ctx context.Context) ([]ServiceStatus, [
 	}
 
 	if h.udpServer != nil {
-		clients := 0
-
-		clients = h.udpServer.GetClientCount()
+		clients := h.udpServer.GetClientCount()
+		udpStatus := "offline"
+		udpLoad := fmt.Sprintf("%d clients", clients)
+		if h.udpServer.IsRunning() {
+			udpStatus = "online"
+		} else {
+			udpLoad = "not running"
+			issues = append(issues, "UDP notification server is not accepting packets")
+		}
 
 		services = append(services, ServiceStatus{
 			Name:    "UDP Notifications",
-			Status:  "online",
+			Status:  udpStatus,
 			Address: h.udpAddress,
 			Uptime:  uptime.String(),
-			Load:    fmt.Sprintf("%d clients", clients),
+			Load:    udpLoad,
 		})
 	}
 
