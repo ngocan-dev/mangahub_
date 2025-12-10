@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"sort"
 	"strings"
 	"sync"
@@ -262,13 +263,12 @@ func (c *Client) TriggerProgressSync(ctx context.Context) (*ManualSyncResult, er
 
 // GetSyncStatus reports current sync state.
 func (c *Client) GetSyncStatus(ctx context.Context) (*SyncStatus, error) {
-	seedProgress()
-	status := &SyncStatus{
-		Local: SyncLayerStatus{OK: true, Message: "Updated", Updated: time.Now().UTC().Add(-5 * time.Minute)},
-		TCP:   TCPSyncStatus{OK: true, Devices: 3, Message: "3 devices connected"},
-		Cloud: CloudSyncStatus{OK: true, Message: "Synced", LastSync: time.Date(2024, 1, 20, 16, 45, 0, 0, time.UTC)},
+	var status SyncStatus
+	if err := c.doRequest(ctx, http.MethodGet, "/sync/status", nil, &status); err != nil {
+		return nil, err
 	}
-	return status, nil
+
+	return &status, nil
 }
 
 func trimHistory(history []HistoryItem, max int) []HistoryItem {

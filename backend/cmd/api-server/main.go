@@ -186,11 +186,12 @@ func main() {
 		notificationHandler = handlers.NewNotificationHandler(db, nil)
 	}
 
-	statusHandler := handlers.NewStatusHandler(startTime, db, healthMonitor, writeQueue, dsn)
-	statusHandler.SetTCPServer(tcpServer)
-	if udpServer != nil {
-		statusHandler.SetUDPServer(udpServer)
-	}
+        statusHandler := handlers.NewStatusHandler(startTime, db, healthMonitor, writeQueue, dsn)
+        statusHandler.SetTCPServer(tcpServer)
+        if udpServer != nil {
+                statusHandler.SetUDPServer(udpServer)
+        }
+        syncHandler := handlers.NewSyncStatusHandler(db, healthMonitor, tcpServer, dsn)
 
 	apiAddress := ":8080"
 	grpcAddress := os.Getenv("GRPC_SERVER_ADDR")
@@ -214,7 +215,8 @@ func main() {
 	// Route UC-001: Register
 	r.POST("/register", userHandler.Register)
 
-	r.GET("/server/status", statusHandler.GetStatus)
+        r.GET("/server/status", statusHandler.GetStatus)
+        r.GET("/sync/status", syncHandler.GetStatus)
 
 	// Route: Login
 	r.POST("/login", authHandler.Login)
