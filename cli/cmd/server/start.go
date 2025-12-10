@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ngocan-dev/mangahub_/cli/internal/api"
+	"github.com/ngocan-dev/mangahub_/cli/internal/config"
+	"github.com/ngocan-dev/mangahub_/cli/internal/output"
 	serverstate "github.com/ngocan-dev/mangahub_/cli/internal/server"
 	"github.com/spf13/cobra"
 )
@@ -34,29 +37,23 @@ var startCmd = &cobra.Command{
 			return err
 		}
 
-		components := resolveComponents(httpOnly, tcpOnly, udpOnly)
-		serverstate.MarkRunning(components)
-
-		cmd.Println("Starting MangaHub Server Components...")
-		cmd.Println()
-		for idx, component := range components {
-			cmd.Println(fmt.Sprintf("[%d/%d] %s", idx+1, len(components), component.Name))
-			for _, line := range component.StartMessages {
-				cmd.Println(line)
-			}
-			cmd.Println()
+		cfg := config.ManagerInstance()
+		if cfg == nil {
+			return fmt.Errorf("configuration not loaded")
 		}
-		cmd.Println("All servers started successfully!")
-		cmd.Println()
-		cmd.Println("Server URLs:")
-		cmd.Println("HTTP API:    http://localhost:8080")
-		cmd.Println("TCP Sync:    tcp://localhost:9090")
-		cmd.Println("UDP Notify:  udp://localhost:9091")
-		cmd.Println("gRPC:        grpc://localhost:9092")
-		cmd.Println("WebSocket:   ws://localhost:9093")
-		cmd.Println()
-		cmd.Println("Logs: tail -f ~/.mangahub/logs/server.log")
-		cmd.Println("Stop: mangahub server stop")
+
+		client := api.NewClient(cfg.Data.BaseURL, cfg.Data.Token)
+		status, err := client.GetServerStatus(cmd.Context())
+		if err != nil {
+			return err
+		}
+
+		filtered := filterServices(status, httpOnly, tcpOnly, udpOnly)
+		serverstate.UpdateFromStatus(filtered)
+		serverstate.MarkRunning()
+
+		cmd.Println("Live MangaHub Server Status")
+		output.PrintServerStatusTable(cmd, filtered)
 		return nil
 	},
 }
@@ -81,16 +78,30 @@ func validateStartFlags(httpOnly, tcpOnly, udpOnly bool) error {
 	return nil
 }
 
-func resolveComponents(httpOnly, tcpOnly, udpOnly bool) []serverstate.Component {
-	components := serverstate.Components()
-	if httpOnly {
-		return []serverstate.Component{components[0]}
+func filterServices(status *api.ServerStatus, httpOnly, tcpOnly, udpOnly bool) *api.ServerStatus {
+	if status == nil {
+		return &api.ServerStatus{}
 	}
-	if tcpOnly {
-		return []serverstate.Component{components[1]}
+
+	filtered := *status
+	filtered.Services = make([]api.ServiceStatus, 0, len(status.Services))
+
+	if !httpOnly && !tcpOnly && !udpOnly {
+		filtered.Services = append(filtered.Services, status.Services...)
+		return &filtered
 	}
-	if udpOnly {
-		return []serverstate.Component{components[2]}
+
+	for _, svc := range status.Services {
+		name := strings.ToLower(svc.Name)
+		switch {
+		case httpOnly && strings.Contains(name, "http"):
+			filtered.Services = append(filtered.Services, svc)
+		case tcpOnly && strings.Contains(name, "tcp"):
+			filtered.Services = append(filtered.Services, svc)
+		case udpOnly && strings.Contains(name, "udp"):
+			filtered.Services = append(filtered.Services, svc)
+		}
 	}
-	return components
+
+	return &filtered
 }
