@@ -64,14 +64,13 @@ var searchCmd = &cobra.Command{
 			return nil
 		}
 
-		table := utils.Table{Headers: []string{"ID", "Title", "Author", "Status", "Genre"}}
+		table := utils.Table{Headers: []string{"ID", "Title", "Author", "Status"}}
 		for _, novel := range resp.Results {
 			table.AddRow(
 				fmt.Sprintf("%d", novel.ID),
 				formatNovelTitle(novel.Title, novel.Name),
 				novel.Author,
 				formatNovelStatus(novel.Status),
-				novel.Genre,
 			)
 		}
 
