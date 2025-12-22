@@ -14,7 +14,7 @@ import (
 var NotifyCmd = &cobra.Command{
 	Use:   "notify",
 	Short: "Manage notifications",
-	Long:  "Subscribe to and configure MangaHub notifications.",
+	Long:  "Subscribe to, configure, and broadcast MangaHub notifications.",
 }
 
 var subscribeCmd = &cobra.Command{
