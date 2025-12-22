@@ -53,7 +53,7 @@ var infoCmd = &cobra.Command{
 		cmd.Printf("ID: %d\n", info.ID)
 		cmd.Printf("Title: %s\n", fallbackString(info.Title, info.Name))
 		cmd.Printf("Author: %s\n", info.Author)
-		cmd.Printf("Status: %s\n", info.Status)
+		cmd.Printf("Status: %s\n", formatNovelStatus(info.Status))
 		cmd.Printf("Genre: %s\n", info.Genre)
 		cmd.Printf("Rating: %.1f\n", info.RatingPoint)
 		cmd.Printf("Chapters: %d\n", info.ChapterCount)
