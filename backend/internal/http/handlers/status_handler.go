@@ -31,6 +31,7 @@ type ServiceStatus struct {
 	Address string `json:"address"`
 	Uptime  string `json:"uptime"`
 	Load    string `json:"load"`
+	Error   string `json:"error,omitempty"`
 }
 
 // DatabaseStatus captures connectivity and metadata for the DB.
@@ -142,11 +143,13 @@ func (h *StatusHandler) collectServices(ctx context.Context) ([]ServiceStatus, [
 
 	httpStatus := "online"
 	httpLoad := fmt.Sprintf("%d queued writes", queueSize)
+	httpError := ""
 	issues := make([]string, 0)
 
 	if h.db == nil {
 		httpStatus = "offline"
-		issues = append(issues, "database connection is not configured")
+		httpError = "database connection is not configured"
+		issues = append(issues, httpError)
 	} else {
 		pingCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 		defer cancel()
@@ -154,11 +157,13 @@ func (h *StatusHandler) collectServices(ctx context.Context) ([]ServiceStatus, [
 		if err := h.db.PingContext(pingCtx); err != nil {
 			httpStatus = "offline"
 			httpLoad = "database unreachable"
-			issues = append(issues, fmt.Sprintf("http api cannot reach database: %v", err))
+			httpError = fmt.Sprintf("http api cannot reach database: %v", err)
+			issues = append(issues, httpError)
 		} else if h.dbHealth != nil && !h.dbHealth.IsHealthy() {
 			httpStatus = "degraded"
 			httpLoad = "database unhealthy"
-			issues = append(issues, "database connection is unhealthy")
+			httpError = "database connection is unhealthy"
+			issues = append(issues, httpError)
 		}
 	}
 
@@ -168,12 +173,15 @@ func (h *StatusHandler) collectServices(ctx context.Context) ([]ServiceStatus, [
 		Address: h.apiAddress,
 		Uptime:  uptime.String(),
 		Load:    httpLoad,
+		Error:   httpError,
 	}}
 
 	if h.grpcAddress != "" {
+		grpcError := ""
 		status, load, err := checkGRPC(ctx, h.grpcAddress)
 		if err != nil {
-			issues = append(issues, fmt.Sprintf("gRPC server unreachable: %v", err))
+			grpcError = fmt.Sprintf("gRPC server unreachable: %v", err)
+			issues = append(issues, grpcError)
 		}
 
 		services = append(services, ServiceStatus{
@@ -182,6 +190,7 @@ func (h *StatusHandler) collectServices(ctx context.Context) ([]ServiceStatus, [
 			Address: h.grpcAddress,
 			Uptime:  uptime.String(),
 			Load:    load,
+			Error:   grpcError,
 		})
 	}
 
@@ -189,19 +198,22 @@ func (h *StatusHandler) collectServices(ctx context.Context) ([]ServiceStatus, [
 		stats := h.tcpServer.Stats()
 		svcStatus := "offline"
 		load := "not running"
+		tcpError := ""
 
 		if stats.Running {
 			svcStatus = "online"
 			if stats.MaxClients > 0 {
 				load = fmt.Sprintf("%d/%d clients", stats.Clients, stats.MaxClients)
 				if stats.Clients >= stats.MaxClients {
-					issues = append(issues, "TCP sync server at capacity")
+					tcpError = "TCP sync server at capacity"
+					issues = append(issues, tcpError)
 				}
 			} else {
 				load = fmt.Sprintf("%d clients", stats.Clients)
 			}
 		} else {
-			issues = append(issues, "TCP sync server is not accepting connections")
+			tcpError = "TCP sync server is not accepting connections"
+			issues = append(issues, tcpError)
 		}
 
 		services = append(services, ServiceStatus{
@@ -210,6 +222,7 @@ func (h *StatusHandler) collectServices(ctx context.Context) ([]ServiceStatus, [
 			Address: h.tcpAddress,
 			Uptime:  uptime.String(),
 			Load:    load,
+			Error:   tcpError,
 		})
 	}
 
@@ -217,19 +230,22 @@ func (h *StatusHandler) collectServices(ctx context.Context) ([]ServiceStatus, [
 		stats := h.udpServer.Stats()
 		udpStatus := "offline"
 		udpLoad := "not running"
+		udpError := ""
 
 		if stats.Running {
 			udpStatus = "online"
 			if stats.MaxClients > 0 {
 				udpLoad = fmt.Sprintf("%d/%d clients", stats.Clients, stats.MaxClients)
 				if stats.Clients >= stats.MaxClients {
-					issues = append(issues, "UDP notification server at capacity")
+					udpError = "UDP notification server at capacity"
+					issues = append(issues, udpError)
 				}
 			} else {
 				udpLoad = fmt.Sprintf("%d clients", stats.Clients)
 			}
 		} else {
-			issues = append(issues, "UDP notification server is not accepting packets")
+			udpError = "UDP notification server is not accepting packets"
+			issues = append(issues, udpError)
 		}
 
 		services = append(services, ServiceStatus{
@@ -238,13 +254,16 @@ func (h *StatusHandler) collectServices(ctx context.Context) ([]ServiceStatus, [
 			Address: h.udpAddress,
 			Uptime:  uptime.String(),
 			Load:    udpLoad,
+			Error:   udpError,
 		})
 	}
 
 	if h.wsAddress != "" {
+		wsError := ""
 		status, load, err := checkWebSocket(ctx, h.wsAddress)
 		if err != nil {
-			issues = append(issues, fmt.Sprintf("WebSocket chat server unreachable: %v", err))
+			wsError = fmt.Sprintf("WebSocket chat server unreachable: %v", err)
+			issues = append(issues, wsError)
 		}
 
 		services = append(services, ServiceStatus{
@@ -253,6 +272,7 @@ func (h *StatusHandler) collectServices(ctx context.Context) ([]ServiceStatus, [
 			Address: h.wsAddress,
 			Uptime:  uptime.String(),
 			Load:    load,
+			Error:   wsError,
 		})
 	}
 
