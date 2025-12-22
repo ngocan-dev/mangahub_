@@ -63,22 +63,17 @@ var addCmd = &cobra.Command{
 		}
 
 		if config.Runtime().Quiet {
-			cmd.Println(resp.MangaID)
+			cmd.Println(mangaID)
 			return nil
 		}
 
 		output.PrintJSON(cmd, resp)
 		cmd.Println("✓ Added to your library!")
-		title := resp.Title
-		if title == "" {
-			title = "Unknown"
-		}
-		cmd.Printf("Manga: %s (%s)\n", title, resp.MangaID)
-		cmd.Printf("Status: %s\n", status)
-		if rating == nil {
-			cmd.Println("Rating: Unrated")
+		cmd.Printf("Manga ID: %s\n", mangaID)
+		if resp.LibraryStatus != nil {
+			cmd.Printf("Status: %s\n", resp.LibraryStatus.Status)
 		} else {
-			cmd.Printf("Rating: %d/10\n", *rating)
+			cmd.Printf("Status: %s\n", status)
 		}
 		return nil
 	},

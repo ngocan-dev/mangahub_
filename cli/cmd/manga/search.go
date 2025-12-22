@@ -45,13 +45,20 @@ var searchCmd = &cobra.Command{
 		}
 
 		client := api.NewClient(cfg.Data.BaseURL, cfg.Data.Token)
-		results, err := client.SearchManga(cmd.Context(), query, filters)
+		resp, err := client.SearchManga(cmd.Context(), query, filters)
 		if err != nil {
 			return err
 		}
 
+		results := resp.Results
 		if format == output.FormatJSON {
-			output.PrintJSON(cmd, map[string]any{"results": results})
+			output.PrintJSON(cmd, map[string]any{
+				"results": results,
+				"total":   resp.Total,
+				"page":    resp.Page,
+				"limit":   resp.Limit,
+				"pages":   resp.Pages,
+			})
 			return nil
 		}
 
@@ -77,7 +84,11 @@ var searchCmd = &cobra.Command{
 			return nil
 		}
 
-		cmd.Printf("Found %d results:\n", len(results))
+		if resp.Total > 0 {
+			cmd.Printf("Found %d results (page %d/%d):\n", resp.Total, resp.Page, resp.Pages)
+		} else {
+			cmd.Printf("Found %d results:\n", len(results))
+		}
 		table := buildMangaTable(fromSearchResults(results))
 		cmd.Print(table)
 		cmd.Println("\nUse 'mangahub manga info <id>' to view details")
@@ -156,7 +167,7 @@ func parseSearchFilters(cmd *cobra.Command) (api.MangaSearchFilters, error) {
 }
 
 func buildMangaTable(rows [][]string) string {
-	t := utils.Table{Headers: []string{"ID", "Title", "Author", "Status", "Chapters"}, Rows: rows}
+	t := utils.Table{Headers: []string{"ID", "Title", "Author", "Status", "Genres"}, Rows: rows}
 	return t.Render()
 }
 
@@ -164,25 +175,26 @@ func fromSearchResults(results []api.MangaSearchResult) [][]string {
 	var rows [][]string
 	for _, res := range results {
 		rows = append(rows, []string{
-			res.ID,
-			formatTitleCell(res.Title, res.AltTitles),
+			fmt.Sprintf("%d", res.ID),
+			formatTitleCell(res.Title, res.Name),
 			formatAuthorCell(res.Author),
 			formatStatus(res.Status),
-			formatChapterCount(res.Chapters),
+			formatGenres(res.Genre),
 		})
 	}
 	return rows
 }
 
-func formatTitleCell(title string, alt []string) string {
-	if len(alt) == 0 {
+func formatTitleCell(title, name string) string {
+	title = strings.TrimSpace(title)
+	name = strings.TrimSpace(name)
+	if title == "" {
+		return name
+	}
+	if name == "" || strings.EqualFold(name, title) {
 		return title
 	}
-	altTitle := alt[0]
-	if altTitle != "" && !strings.HasPrefix(altTitle, "(") {
-		altTitle = fmt.Sprintf("(%s)", altTitle)
-	}
-	return strings.Join([]string{title, altTitle}, "\n")
+	return strings.Join([]string{title, fmt.Sprintf("(%s)", name)}, "\n")
 }
 
 func formatAuthorCell(author string) string {
@@ -209,9 +221,10 @@ func formatStatus(status string) string {
 	}
 }
 
-func formatChapterCount(chapters int) string {
-	if chapters <= 0 {
+func formatGenres(genre string) string {
+	genre = strings.TrimSpace(genre)
+	if genre == "" {
 		return "-"
 	}
-	return fmt.Sprintf("%d", chapters)
+	return genre
 }

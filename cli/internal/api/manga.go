@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // MangaSearchFilters captures optional search parameters.
@@ -25,40 +26,54 @@ type MangaSearchFilters struct {
 
 // MangaSearchResult represents a manga search item.
 type MangaSearchResult struct {
-	ID        string   `json:"id"`
-	Title     string   `json:"title"`
-	AltTitles []string `json:"alt_titles"`
-	Author    string   `json:"author"`
-	Status    string   `json:"status"`
-	Chapters  int      `json:"chapters"`
+	ID          int64   `json:"id"`
+	Name        string  `json:"name"`
+	Title       string  `json:"title"`
+	Author      string  `json:"author"`
+	Genre       string  `json:"genre"`
+	Status      string  `json:"status"`
+	Description string  `json:"description"`
+	Image       string  `json:"image"`
+	RatingPoint float64 `json:"rating_point"`
+}
+
+// MangaSearchResponse represents the search response payload.
+type MangaSearchResponse struct {
+	Results []MangaSearchResult `json:"results"`
+	Total   int                 `json:"total"`
+	Page    int                 `json:"page"`
+	Limit   int                 `json:"limit"`
+	Pages   int                 `json:"pages"`
 }
 
 // MangaInfoResponse contains manga metadata and optional library info.
 type MangaInfoResponse struct {
-	ID            string            `json:"id"`
-	Title         string            `json:"title"`
-	AltTitles     []string          `json:"alt_titles"`
-	Author        string            `json:"author"`
-	Artist        string            `json:"artist"`
-	Genres        []string          `json:"genres"`
-	Status        string            `json:"status"`
-	Year          int               `json:"year"`
-	Chapters      int               `json:"chapters"`
-	Volumes       int               `json:"volumes"`
-	Serialization string            `json:"serialization"`
-	Publisher     string            `json:"publisher"`
-	Description   string            `json:"description"`
-	Links         map[string]string `json:"links"`
-	Library       *MangaLibraryInfo `json:"library,omitempty"`
+	ID           int64          `json:"id"`
+	Name         string         `json:"name"`
+	Title        string         `json:"title"`
+	Author       string         `json:"author"`
+	Genre        string         `json:"genre"`
+	Status       string         `json:"status"`
+	Description  string         `json:"description"`
+	Image        string         `json:"image"`
+	RatingPoint  float64        `json:"rating_point"`
+	ChapterCount int            `json:"chapter_count"`
+	Library      *LibraryStatus `json:"library_status,omitempty"`
+	Progress     *UserProgress  `json:"user_progress,omitempty"`
 }
 
-// MangaLibraryInfo holds user-specific library data.
-type MangaLibraryInfo struct {
-	Status         string `json:"status"`
-	CurrentChapter int    `json:"current_chapter"`
-	LastUpdated    string `json:"last_updated"`
-	StartedReading string `json:"started_reading"`
-	Rating         int    `json:"rating"`
+// LibraryStatus holds user library status data.
+type LibraryStatus struct {
+	Status      string     `json:"status"`
+	StartedAt   *time.Time `json:"started_at,omitempty"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
+}
+
+// UserProgress holds user reading progress.
+type UserProgress struct {
+	CurrentChapter   int       `json:"current_chapter"`
+	CurrentChapterID *int64    `json:"current_chapter_id,omitempty"`
+	LastReadAt       time.Time `json:"last_read_at"`
 }
 
 // MangaListFilters captures list filters.
@@ -80,11 +95,11 @@ type MangaListItem struct {
 }
 
 // SearchManga searches manga titles with filters.
-func (c *Client) SearchManga(ctx context.Context, query string, filters MangaSearchFilters) ([]MangaSearchResult, error) {
+func (c *Client) SearchManga(ctx context.Context, query string, filters MangaSearchFilters) (*MangaSearchResponse, error) {
 	u, _ := url.Parse(c.baseURL + "/manga/search")
 	q := u.Query()
 	q.Set("q", query)
-	q.Set("genre", filters.Genre)
+	q.Set("genres", filters.Genre)
 	q.Set("status", filters.Status)
 	q.Set("author", filters.Author)
 	if filters.YearFrom > 0 {
@@ -119,11 +134,11 @@ func (c *Client) SearchManga(ctx context.Context, query string, filters MangaSea
 		return nil, err
 	}
 
-	var results []MangaSearchResult
-	if err := json.NewDecoder(res.Body).Decode(&results); err != nil {
+	var response MangaSearchResponse
+	if err := json.NewDecoder(res.Body).Decode(&response); err != nil {
 		return nil, err
 	}
-	return results, nil
+	return &response, nil
 }
 
 // GetMangaInfo retrieves detailed manga information.

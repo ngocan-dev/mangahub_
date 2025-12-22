@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -34,6 +35,26 @@ type ProgressUpdateResponse struct {
 	EstimatedCompletion  string               `json:"estimated_completion"`
 	NextChapterAvailable int                  `json:"next_chapter_available"`
 	Sync                 ProgressSyncSnapshot `json:"sync"`
+}
+
+// UpdateProgressResponse represents the backend progress update response.
+type UpdateProgressResponse struct {
+	Message      string        `json:"message"`
+	UserProgress *UserProgress `json:"user_progress"`
+	Broadcasted  bool          `json:"broadcasted"`
+}
+
+// UpdateProgress updates progress for a specific manga via the backend API.
+func (c *Client) UpdateProgress(ctx context.Context, mangaID string, chapter int) (*UpdateProgressResponse, error) {
+	payload := map[string]any{
+		"current_chapter": chapter,
+	}
+	endpoint := fmt.Sprintf("/manga/%s/progress", url.PathEscape(mangaID))
+	var resp UpdateProgressResponse
+	if err := c.doRequest(ctx, http.MethodPut, endpoint, payload, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }
 
 // HistoryItem represents a single history record.
