@@ -19,6 +19,17 @@ var statusCmd = &cobra.Command{
 	RunE:    runAuthStatus,
 }
 
+// NewStatusCommand builds a reusable status command.
+func NewStatusCommand(use, short, long, example string) *cobra.Command {
+	return &cobra.Command{
+		Use:     use,
+		Short:   short,
+		Long:    long,
+		Example: example,
+		RunE:    runAuthStatus,
+	}
+}
+
 func init() {
 	AuthCmd.AddCommand(statusCmd)
 }

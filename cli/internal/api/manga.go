@@ -48,18 +48,19 @@ type MangaSearchResponse struct {
 
 // MangaInfoResponse contains manga metadata and optional library info.
 type MangaInfoResponse struct {
-	ID           int64          `json:"id"`
-	Name         string         `json:"name"`
-	Title        string         `json:"title"`
-	Author       string         `json:"author"`
-	Genre        string         `json:"genre"`
-	Status       string         `json:"status"`
-	Description  string         `json:"description"`
-	Image        string         `json:"image"`
-	RatingPoint  float64        `json:"rating_point"`
-	ChapterCount int            `json:"chapter_count"`
-	Library      *LibraryStatus `json:"library_status,omitempty"`
-	Progress     *UserProgress  `json:"user_progress,omitempty"`
+	ID           int64            `json:"id"`
+	Name         string           `json:"name"`
+	Title        string           `json:"title"`
+	Author       string           `json:"author"`
+	Genre        string           `json:"genre"`
+	Status       string           `json:"status"`
+	Description  string           `json:"description"`
+	Image        string           `json:"image"`
+	RatingPoint  float64          `json:"rating_point"`
+	ChapterCount int              `json:"chapter_count"`
+	Chapters     []ChapterSummary `json:"chapters,omitempty"`
+	Library      *LibraryStatus   `json:"library_status,omitempty"`
+	Progress     *UserProgress    `json:"user_progress,omitempty"`
 }
 
 // LibraryStatus holds user library status data.
