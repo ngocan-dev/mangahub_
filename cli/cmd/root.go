@@ -6,22 +6,29 @@ import (
 
 	"github.com/ngocan-dev/mangahub_/cli/cmd/auth"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/backup"
+	"github.com/ngocan-dev/mangahub_/cli/cmd/chapter"
 	chatcmd "github.com/ngocan-dev/mangahub_/cli/cmd/chat"
 	configcmd "github.com/ngocan-dev/mangahub_/cli/cmd/config"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/db"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/export"
+	"github.com/ngocan-dev/mangahub_/cli/cmd/fav"
+	"github.com/ngocan-dev/mangahub_/cli/cmd/fetch"
 	grpcCmd "github.com/ngocan-dev/mangahub_/cli/cmd/grpc"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/library"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/logs"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/manga"
+	"github.com/ngocan-dev/mangahub_/cli/cmd/migrate"
 	notifycmd "github.com/ngocan-dev/mangahub_/cli/cmd/notify"
+	"github.com/ngocan-dev/mangahub_/cli/cmd/novel"
 	profilecmd "github.com/ngocan-dev/mangahub_/cli/cmd/profile"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/progress"
+	"github.com/ngocan-dev/mangahub_/cli/cmd/serve"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/server"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/stats"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/sync"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/system"
 	"github.com/ngocan-dev/mangahub_/cli/cmd/update"
+	"github.com/ngocan-dev/mangahub_/cli/cmd/user"
 	"github.com/ngocan-dev/mangahub_/cli/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -69,13 +76,19 @@ func init() {
 
 	rootCmd.AddCommand(server.ServerCmd)
 	rootCmd.AddCommand(auth.AuthCmd)
+	rootCmd.AddCommand(auth.NewLoginCommand("login", "Login to your MangaHub account", "mangahub login --email <email> --password <password>"))
+	rootCmd.AddCommand(auth.NewLogoutCommand("logout", "Logout from MangaHub", "Clear authentication tokens and logout.", "mangahub logout"))
+	rootCmd.AddCommand(user.UserCmd)
 	rootCmd.AddCommand(notifycmd.NotifyCmd)
 	rootCmd.AddCommand(export.ExportCmd)
 	rootCmd.AddCommand(grpcCmd.GRPCCmd)
 	rootCmd.AddCommand(backup.BackupCmd)
 	rootCmd.AddCommand(db.DBCmd)
 	rootCmd.AddCommand(manga.MangaCmd)
+	rootCmd.AddCommand(novel.NovelCmd)
+	rootCmd.AddCommand(chapter.ChapterCmd)
 	rootCmd.AddCommand(library.LibraryCmd)
+	rootCmd.AddCommand(fav.FavCmd)
 	rootCmd.AddCommand(progress.ProgressCmd)
 	rootCmd.AddCommand(chatcmd.ChatCmd)
 	rootCmd.AddCommand(sync.SyncCmd)
@@ -85,4 +98,7 @@ func init() {
 	rootCmd.AddCommand(profilecmd.ProfileCmd)
 	rootCmd.AddCommand(update.UpdateCmd)
 	rootCmd.AddCommand(system.SystemCmd)
+	rootCmd.AddCommand(fetch.FetchCmd)
+	rootCmd.AddCommand(migrate.MigrateCmd)
+	rootCmd.AddCommand(serve.ServeCmd)
 }

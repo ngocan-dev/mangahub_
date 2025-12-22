@@ -146,6 +146,7 @@ func main() {
 	mangaHandler.SetBroadcaster(broadcaster)
 	mangaHandler.SetDBHealth(healthMonitor)
 	mangaHandler.SetWriteQueue(writeQueue)
+	chapterHandler := handlers.NewChapterHandler(db)
 
 	friendRepo := friend.NewRepository(db)
 	friendService := friend.NewService(friendRepo, nil)
@@ -240,6 +241,9 @@ func main() {
 
 	// Route: Get Manga Details
 	r.GET("/manga/:id", mangaHandler.GetDetails)
+
+	// Route: Get Chapter Details
+	r.GET("/chapters/:id", chapterHandler.GetChapter)
 
 	// Route: Add Manga to Library
 	r.POST("/manga/:id/library", mangaHandler.AddToLibrary)

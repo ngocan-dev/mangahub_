@@ -27,6 +27,11 @@ func (s *Service) GetChapter(ctx context.Context, mangaID int64, chapterNumber i
 	return s.repo.GetChapter(ctx, mangaID, chapterNumber)
 }
 
+// GetChapterByID returns a chapter by its identifier.
+func (s *Service) GetChapterByID(ctx context.Context, chapterID int64) (*pkgchapter.Chapter, error) {
+	return s.repo.GetChapterByID(ctx, chapterID)
+}
+
 // ValidateChapter ensures a chapter exists and returns its summary when found.
 func (s *Service) ValidateChapter(ctx context.Context, mangaID int64, chapterNumber int) (*pkgchapter.ChapterSummary, error) {
 	return s.repo.ValidateChapter(ctx, mangaID, chapterNumber)

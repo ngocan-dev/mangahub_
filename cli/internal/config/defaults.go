@@ -43,8 +43,9 @@ type ChatConfig struct {
 
 // NotificationsConfig contains user notification preferences.
 type NotificationsConfig struct {
-	Enabled bool `json:"enabled"`
-	Sound   bool `json:"sound"`
+	Enabled       bool     `json:"enabled"`
+	Sound         bool     `json:"sound"`
+	Subscriptions []string `json:"subscriptions"`
 }
 
 // AuthSection captures authentication-related config.
@@ -92,7 +93,7 @@ func DefaultConfig(profile string) Config {
 		Sync:          SyncConfig{TCPPort: DefaultSyncTCPPort},
 		Notify:        NotifyConfig{UDPPort: DefaultNotifyUDP},
 		Chat:          ChatConfig{WSPort: DefaultChatWSPort},
-		Notifications: NotificationsConfig{Enabled: true, Sound: true},
+		Notifications: NotificationsConfig{Enabled: true, Sound: true, Subscriptions: []string{}},
 		Auth:          AuthSection{Username: "johndoe", Profile: profile},
 		Settings:      LegacySettings{Notifications: true},
 	}

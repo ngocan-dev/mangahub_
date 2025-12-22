@@ -23,18 +23,26 @@ var AuthCmd = &cobra.Command{
 	Long:  "Manage MangaHub authentication including registration and login.",
 }
 
-var authRegisterCmd = &cobra.Command{
-	Use:   "register",
-	Short: "Register a new MangaHub account",
-	RunE:  runAuthRegister,
+var authRegisterCmd = NewRegisterCommand("register", "Register a new MangaHub account", "")
+
+// NewRegisterCommand builds a reusable register command.
+func NewRegisterCommand(use, short, example string) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     use,
+		Short:   short,
+		Example: example,
+		RunE:    runAuthRegister,
+	}
+	cmd.Flags().String("username", "", "Username for the new account")
+	cmd.Flags().String("email", "", "Email address for the new account")
+	cmd.Flags().String("password", "", "Password for the new account (optional; will prompt if empty)")
+	cmd.MarkFlagRequired("username")
+	cmd.MarkFlagRequired("email")
+	return cmd
 }
 
 func init() {
 	AuthCmd.AddCommand(authRegisterCmd)
-	authRegisterCmd.Flags().String("username", "", "Username for the new account")
-	authRegisterCmd.Flags().String("email", "", "Email address for the new account")
-	authRegisterCmd.MarkFlagRequired("username")
-	authRegisterCmd.MarkFlagRequired("email")
 }
 
 func runAuthRegister(cmd *cobra.Command, args []string) error {
@@ -45,14 +53,19 @@ func runAuthRegister(cmd *cobra.Command, args []string) error {
 		return handleValidationError(cmd, err)
 	}
 
-	password, confirm, err := promptPassword(cmd)
-	if err != nil {
-		return err
-	}
+	password, _ := cmd.Flags().GetString("password")
+	if password == "" {
+		confirm := ""
+		var err error
+		password, confirm, err = promptPassword(cmd)
+		if err != nil {
+			return err
+		}
 
-	if password != confirm {
-		printPasswordMismatch(cmd)
-		os.Exit(1)
+		if password != confirm {
+			printPasswordMismatch(cmd)
+			os.Exit(1)
+		}
 	}
 
 	if err := validatePassword(password); err != nil {
