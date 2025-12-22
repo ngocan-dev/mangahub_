@@ -17,6 +17,11 @@ var unsubscribeCmd = &cobra.Command{
 	Example: "mangahub notify unsubscribe 42",
 	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		format, err := output.GetFormat(cmd)
+		if err != nil {
+			return err
+		}
+
 		cfg := config.ManagerInstance()
 		if cfg == nil {
 			return fmt.Errorf("configuration not loaded")
@@ -33,15 +38,23 @@ var unsubscribeCmd = &cobra.Command{
 
 		client := notifyclient.NewUDPClient(cfg)
 
-		output.PrintJSON(cmd, map[string]any{"delivery": "udp", "port": client.Port(), "novel_id": novelID})
-
-		if !config.Runtime().Quiet {
+		if format != output.FormatJSON && !config.Runtime().Quiet {
 			cmd.Println("Unsubscribing from chapter release notifications...")
 		}
 
 		updated, err := removeSubscription(cfg, novelID)
 		if err != nil {
 			return err
+		}
+
+		if format == output.FormatJSON {
+			output.PrintJSON(cmd, map[string]any{
+				"delivery":     "udp",
+				"port":         client.Port(),
+				"novel_id":     novelID,
+				"unsubscribed": updated,
+			})
+			return nil
 		}
 
 		if config.Runtime().Quiet {
@@ -64,4 +77,5 @@ var unsubscribeCmd = &cobra.Command{
 
 func init() {
 	NotifyCmd.AddCommand(unsubscribeCmd)
+	output.AddFlag(unsubscribeCmd)
 }
