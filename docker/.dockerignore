@@ -1,0 +1,81 @@
+# Ignore git files
+.git
+.gitignore
+.gitattributes
+
+# Ignore documentation
+*.md
+!README.md
+docs/
+LICENSE
+
+# Ignore IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Ignore test files
+*_test.go
+testdata/
+coverage.out
+*.test
+
+# Ignore build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+
+# Ignore development files
+.env
+.env.local
+.env.*.local
+*.log
+tmp/
+temp/
+
+# Ignore node modules (if any frontend)
+node_modules/
+npm-debug.log*
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Ignore data files
+data/
+*.db
+*.db-shm
+*.db-wal
+
+# Ignore cache
+.cache/
+*.cache
+
+# Ignore docker files (they're already being used)
+docker/
+.dockerignore
+Dockerfile
+docker-compose*.yml
+
+# Ignore CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Keep only what's needed for build
+!backend/
+!cli/
+!proto/
+!go.work
+!go.work.sum
+!backend/go.mod
+!backend/go.sum
+!cli/go.mod
+!cli/go.sum
