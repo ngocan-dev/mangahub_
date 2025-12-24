@@ -78,14 +78,6 @@ type LoginResponse struct {
 	} `json:"user"`
 }
 
-// UpdateProgress updates manga reading progress.
-func (c *Client) UpdateProgress(ctx context.Context, mangaID string, chapter int) (map[string]any, error) {
-	payload := map[string]any{"manga_id": mangaID, "chapter": chapter}
-	var resp map[string]any
-	err := c.doRequest(ctx, http.MethodPost, "/progress/update", payload, &resp)
-	return resp, err
-}
-
 func (c *Client) doRequest(ctx context.Context, method, path string, body any, target any) error {
 	var reader io.Reader
 	if body != nil {

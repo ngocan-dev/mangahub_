@@ -2,7 +2,6 @@ package chapter
 
 import (
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 
