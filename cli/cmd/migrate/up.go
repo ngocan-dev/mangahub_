@@ -1,7 +1,6 @@
 package migrate
 
 import (
-	"fmt"
 	"path/filepath"
 
 	"github.com/ngocan-dev/mangahub_/cli/internal/output"

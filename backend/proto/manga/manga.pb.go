@@ -12,6 +12,42 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// NewMangaServiceClient creates a new MangaServiceClient.
+func NewMangaServiceClient(cc grpc.ClientConnInterface) MangaServiceClient {
+	return &mangaServiceClient{cc}
+}
+
+type mangaServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func (c *mangaServiceClient) GetManga(ctx context.Context, in *GetMangaRequest, opts ...grpc.CallOption) (*GetMangaResponse, error) {
+	out := new(GetMangaResponse)
+	err := c.cc.Invoke(ctx, "/manga.MangaService/GetManga", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *mangaServiceClient) SearchManga(ctx context.Context, in *SearchMangaRequest, opts ...grpc.CallOption) (*SearchMangaResponse, error) {
+	out := new(SearchMangaResponse)
+	err := c.cc.Invoke(ctx, "/manga.MangaService/SearchManga", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *mangaServiceClient) UpdateProgress(ctx context.Context, in *UpdateProgressRequest, opts ...grpc.CallOption) (*UpdateProgressResponse, error) {
+	out := new(UpdateProgressResponse)
+	err := c.cc.Invoke(ctx, "/manga.MangaService/UpdateProgress", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MangaServiceClient is the client API for MangaService service
 type MangaServiceClient interface {
 	GetManga(ctx context.Context, in *GetMangaRequest, opts ...grpc.CallOption) (*GetMangaResponse, error)
