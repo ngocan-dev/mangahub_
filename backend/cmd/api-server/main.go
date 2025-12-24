@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"errors"
 	"log"
-	"os"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -14,6 +12,7 @@ import (
 
 	dbpkg "github.com/ngocan-dev/mangahub/backend/db"
 	"github.com/ngocan-dev/mangahub/backend/domain/friend"
+	"github.com/ngocan-dev/mangahub/backend/internal/auth"
 	"github.com/ngocan-dev/mangahub/backend/internal/cache"
 	"github.com/ngocan-dev/mangahub/backend/internal/config"
 	"github.com/ngocan-dev/mangahub/backend/internal/http/handlers"
@@ -65,8 +64,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}
+	auth.SetSecret(cfg.Auth.JWTSecret)
 
-	db, err := dbpkg.Open(cfg.DBDriver, cfg.DBDSN, &dbpkg.PoolConfig{
+	db, err := dbpkg.Open(cfg.DB.Driver, cfg.DB.DSN, &dbpkg.PoolConfig{
 		MaxOpenConns:    25,
 		MaxIdleConns:    5,
 		ConnMaxLifetime: 5 * time.Minute,
@@ -85,9 +85,9 @@ func main() {
 	// Initialize Redis cache if available
 	// Step 1: System identifies frequently requested manga (handled by cache service)
 	var mangaCache *cache.MangaCache
-	redisAddr := cfg.RedisAddr
-	redisPassword := cfg.RedisPassword
-	redisDB := cfg.RedisDB
+	redisAddr := cfg.App.RedisAddr
+	redisPassword := cfg.App.RedisPassword
+	redisDB := cfg.App.RedisDB
 
 	redisClient, err := cache.NewClient(redisAddr, redisPassword, redisDB)
 	if err != nil {
@@ -109,7 +109,7 @@ func main() {
 	writeQueue := queue.NewWriteQueue(1000, 3, nil) // Max 1000 operations, 3 retries
 
 	// Start TCP broadcaster for progress updates
-	tcpAddress := cfg.TCPServerAddr
+	tcpAddress := cfg.App.TCPServerAddr
 	if tcpAddress == "" {
 		tcpAddress = ":9000"
 	}
@@ -154,18 +154,12 @@ func main() {
 	friendHandler := handlers.NewFriendHandler(friendService)
 
 	// Initialize UDP server for chapter release notifications
-	udpAddress := cfg.UDPServerAddr
+	udpAddress := cfg.UDP.ServerAddr
 	if udpAddress == "" {
 		udpAddress = ":9091"
 	}
-	udpServerEnabled := os.Getenv("UDP_SERVER_DISABLED") == ""
-	udpMaxClients := 1000
-
-	if maxClientsEnv := os.Getenv("UDP_MAX_CLIENTS"); maxClientsEnv != "" {
-		if maxFromEnv, err := strconv.Atoi(maxClientsEnv); err == nil {
-			udpMaxClients = maxFromEnv
-		}
-	}
+	udpServerEnabled := !cfg.UDP.Disabled
+	udpMaxClients := cfg.UDP.MaxClients
 
 	var notificationHandler *handlers.NotificationHandler
 	var udpServer *udp.Server
@@ -188,20 +182,20 @@ func main() {
 		notificationHandler = handlers.NewNotificationHandler(db, nil)
 	}
 
-	wsAddress := cfg.WSServerAddr
+	wsAddress := cfg.App.WSServerAddr
 	if wsAddress == "" {
 		wsAddress = ":8081"
 	}
 
-	statusHandler := handlers.NewStatusHandler(startTime, db, healthMonitor, writeQueue, cfg.DBDSN)
+	statusHandler := handlers.NewStatusHandler(startTime, db, healthMonitor, writeQueue, cfg.DB.DSN)
 	statusHandler.SetTCPServer(tcpServer)
 	if udpServer != nil {
 		statusHandler.SetUDPServer(udpServer)
 	}
-	syncHandler := handlers.NewSyncStatusHandler(db, healthMonitor, tcpServer, cfg.DBDSN)
+	syncHandler := handlers.NewSyncStatusHandler(db, healthMonitor, tcpServer, cfg.DB.DSN)
 
 	apiAddress := ":8080"
-	grpcAddress := cfg.GRPCServerAddr
+	grpcAddress := cfg.GRPC.ServerAddr
 	statusHandler.SetAddresses(apiAddress, grpcAddress, tcpAddress, udpAddress)
 	statusHandler.SetWSAddress(wsAddress)
 

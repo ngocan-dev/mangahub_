@@ -4,14 +4,13 @@ import (
 	"context"
 	"flag"
 	"log"
-	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 
 	_ "modernc.org/sqlite"
 
 	dbpkg "github.com/ngocan-dev/mangahub/backend/db"
+	"github.com/ngocan-dev/mangahub/backend/internal/config"
 	"github.com/ngocan-dev/mangahub/backend/internal/udp"
 )
 
@@ -21,6 +20,11 @@ func main() {
 	dbPath := flag.String("db", "file:data/mangahub.db?_foreign_keys=on", "Database connection string")
 	maxClients := flag.Int("max-clients", 1000, "Maximum concurrent UDP notification clients (0 for unlimited)")
 	flag.Parse()
+
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("failed to load config: %v", err)
+	}
 
 	// Open database connection
 	db, err := dbpkg.OpenSQLite(*dbPath, nil)
@@ -33,10 +37,8 @@ func main() {
 	server := udp.NewServer(*address, db)
 	server.SetMaxClients(*maxClients)
 
-	if maxClientsEnv := os.Getenv("UDP_MAX_CLIENTS"); maxClientsEnv != "" {
-		if maxFromEnv, err := strconv.Atoi(maxClientsEnv); err == nil {
-			server.SetMaxClients(maxFromEnv)
-		}
+	if cfg.UDP.MaxClientsFromEnv {
+		server.SetMaxClients(cfg.UDP.MaxClients)
 	}
 
 	// Create context for graceful shutdown
