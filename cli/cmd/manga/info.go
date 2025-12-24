@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"sort"
 	"strings"
+	"time"
 
 	"github.com/ngocan-dev/mangahub_/cli/internal/api"
 	"github.com/ngocan-dev/mangahub_/cli/internal/config"
@@ -18,7 +18,7 @@ var infoCmd = &cobra.Command{
 	Use:     "info <id>",
 	Short:   "Show manga details",
 	Long:    "Retrieve detailed information about a specific manga by ID.",
-	Example: "mangahub manga info one-piece",
+	Example: "mangahub manga info 42",
 	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		format, err := output.GetFormat(cmd)
@@ -73,7 +73,11 @@ func init() {
 }
 
 func renderMangaInfo(cmd *cobra.Command, info *api.MangaInfoResponse) {
-	title := strings.ToUpper(info.Title)
+	titleText := info.Title
+	if strings.TrimSpace(titleText) == "" {
+		titleText = info.Name
+	}
+	title := strings.ToUpper(titleText)
 	bannerWidth := maxInt(69, utils.DisplayWidth(title))
 	top := "┌" + strings.Repeat("─", bannerWidth) + "┐"
 	bottom := "└" + strings.Repeat("─", bannerWidth) + "┘"
@@ -86,54 +90,39 @@ func renderMangaInfo(cmd *cobra.Command, info *api.MangaInfoResponse) {
 	cmd.Println(bottom)
 	cmd.Println()
 
-	altTitle := ""
-	if len(info.AltTitles) > 0 {
-		altTitle = info.AltTitles[0]
-	}
-
 	cmd.Println("Basic Information:")
-	cmd.Printf("ID: %s\n", info.ID)
-	titleLine := info.Title
-	if altTitle != "" {
-		titleLine = fmt.Sprintf("%s (%s)", info.Title, altTitle)
-	}
-	cmd.Printf("Title: %s\n", titleLine)
+	cmd.Printf("ID: %d\n", info.ID)
+	cmd.Printf("Title: %s\n", valueOrNA(titleText))
 	cmd.Printf("Author: %s\n", valueOrNA(info.Author))
-	cmd.Printf("Artist: %s\n", valueOrNA(info.Artist))
-	cmd.Printf("Genres: %s\n", joinOrNA(info.Genres))
+	cmd.Printf("Genres: %s\n", joinOrNA(splitGenres(info.Genre)))
 	cmd.Printf("Status: %s\n", formatStatus(info.Status))
-	if info.Year > 0 {
-		cmd.Printf("Year: %d\n", info.Year)
-	} else {
-		cmd.Println("Year: N/A")
-	}
 	cmd.Println()
 
-	cmd.Println("Progress:")
-	chapters := formatWithPlus(info.Chapters, info.Status)
-	volumes := formatWithPlus(info.Volumes, info.Status)
+	cmd.Println("Availability:")
+	chapters := formatWithPlus(info.ChapterCount, info.Status)
 	cmd.Printf("Total Chapters: %s\n", chapters)
-	cmd.Printf("Total Volumes: %s\n", volumes)
-	cmd.Printf("Serialization: %s\n", valueOrNA(info.Serialization))
-	cmd.Printf("Publisher: %s\n", valueOrNA(info.Publisher))
 
 	library := info.Library
+	progress := info.Progress
+	cmd.Println()
+	cmd.Println("Your Progress:")
 	if library != nil {
 		cmd.Printf("Your Status: %s\n", userStatusLabel(library.Status))
-		cmd.Printf("Current Chapter: %s\n", formatNumber(library.CurrentChapter))
-		cmd.Printf("Last Updated: %s\n", valueOrNA(library.LastUpdated))
-		cmd.Printf("Started Reading: %s\n", valueOrNA(library.StartedReading))
-		if library.Rating > 0 {
-			cmd.Printf("Personal Rating: %d/10\n", library.Rating)
+		if progress != nil {
+			cmd.Printf("Current Chapter: %s\n", formatNumber(progress.CurrentChapter))
+			cmd.Printf("Last Read: %s\n", progress.LastReadAt.UTC().Format("2006-01-02 15:04:05 MST"))
 		} else {
-			cmd.Println("Personal Rating: -")
+			cmd.Println("Current Chapter: -")
+			cmd.Println("Last Read: -")
 		}
+		cmd.Printf("Started Reading: %s\n", formatOptionalTime(library.StartedAt))
+		cmd.Printf("Completed At: %s\n", formatOptionalTime(library.CompletedAt))
 	} else {
 		cmd.Println("Your Status: Not in library")
 		cmd.Println("Current Chapter: -")
-		cmd.Println("Last Updated: -")
+		cmd.Println("Last Read: -")
 		cmd.Println("Started Reading: -")
-		cmd.Println("Personal Rating: -")
+		cmd.Println("Completed At: -")
 	}
 	cmd.Println()
 
@@ -146,29 +135,19 @@ func renderMangaInfo(cmd *cobra.Command, info *api.MangaInfoResponse) {
 	}
 	cmd.Println()
 
-	cmd.Println("External Links:")
-	for _, link := range sortedLinks(info.Links) {
-		cmd.Println(link)
-	}
-	if len(info.Links) == 0 {
-		cmd.Println("No links available.")
-	}
-	cmd.Println()
-
 	cmd.Println("Actions:")
-	nextChapter := "<chapter>"
-	ratingValue := "<1-10>"
-	if library != nil {
-		if library.CurrentChapter > 0 {
-			nextChapter = fmt.Sprintf("%d", library.CurrentChapter+1)
+	if library == nil {
+		cmd.Printf("Add to Library: mangahub library add --manga-id %d --status reading\n", info.ID)
+		cmd.Printf("Update Progress: mangahub progress update --manga-id %d --chapter <chapter>\n", info.ID)
+	} else {
+		nextChapter := "<chapter>"
+		if progress != nil && progress.CurrentChapter > 0 {
+			nextChapter = fmt.Sprintf("%d", progress.CurrentChapter+1)
 		}
-		if library.Rating > 0 {
-			ratingValue = fmt.Sprintf("%d", library.Rating)
-		}
+		cmd.Printf("Update Progress: mangahub progress update --manga-id %d --chapter %s\n", info.ID, nextChapter)
+		cmd.Printf("Change Status:  mangahub library update --manga-id %d --status completed\n", info.ID)
+		cmd.Printf("Remove:         mangahub library remove --manga-id %d\n", info.ID)
 	}
-	cmd.Printf("Update Progress: mangahub progress update --manga-id %s --chapter %s\n", info.ID, nextChapter)
-	cmd.Printf("Rate/Review:   mangahub library update --manga-id %s --rating %s\n", info.ID, ratingValue)
-	cmd.Printf("Remove:        mangahub library remove --manga-id %s\n", info.ID)
 }
 
 func valueOrNA(value string) string {
@@ -183,6 +162,28 @@ func joinOrNA(values []string) string {
 		return "N/A"
 	}
 	return strings.Join(values, ", ")
+}
+
+func splitGenres(genre string) []string {
+	genre = strings.TrimSpace(genre)
+	if genre == "" {
+		return nil
+	}
+	parts := strings.Split(genre, ",")
+	var cleaned []string
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			cleaned = append(cleaned, trimmed)
+		}
+	}
+	return cleaned
+}
+
+func formatOptionalTime(t *time.Time) string {
+	if t == nil {
+		return "-"
+	}
+	return t.UTC().Format("2006-01-02 15:04:05 MST")
 }
 
 func formatWithPlus(value int, status string) string {
@@ -238,35 +239,6 @@ func wrapText(text string, width int) []string {
 		lines = append(lines, current.String())
 	}
 	return lines
-}
-
-func sortedLinks(links map[string]string) []string {
-	if len(links) == 0 {
-		return nil
-	}
-	keys := make([]string, 0, len(links))
-	for k := range links {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	var formatted []string
-	for _, key := range keys {
-		name := linkLabel(key)
-		formatted = append(formatted, fmt.Sprintf("%s: %s", name, links[key]))
-	}
-	return formatted
-}
-
-func linkLabel(key string) string {
-	switch strings.ToLower(key) {
-	case "mal", "myanimelist":
-		return "MyAnimeList"
-	case "mangadx":
-		return "MangaDx"
-	default:
-		return strings.Title(key)
-	}
 }
 
 func userStatusLabel(status string) string {

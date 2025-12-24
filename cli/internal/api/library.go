@@ -6,28 +6,28 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 )
 
 // LibraryEntry represents a manga entry in the user's library.
 type LibraryEntry struct {
-	MangaID        string  `json:"manga_id"`
-	Title          string  `json:"title"`
-	Status         string  `json:"status"`
-	CurrentChapter int     `json:"current_chapter"`
-	TotalChapters  *int    `json:"total_chapters"`
-	Rating         *int    `json:"rating"`
-	StartedAt      string  `json:"started_at"`
-	UpdatedAt      string  `json:"updated_at"`
-	CompletedAt    string  `json:"completed_at"`
-	Description    *string `json:"description"`
+	MangaID        string     `json:"manga_id"`
+	Title          string     `json:"title"`
+	Status         string     `json:"status"`
+	CurrentChapter int        `json:"current_chapter"`
+	TotalChapters  *int       `json:"total_chapters"`
+	Rating         *int       `json:"rating"`
+	StartedAt      *time.Time `json:"started_at"`
+	UpdatedAt      *time.Time `json:"updated_at"`
+	CompletedAt    *time.Time `json:"completed_at"`
+	Description    *string    `json:"description"`
 }
 
 // LibraryAddResponse is returned when adding a manga to the library.
 type LibraryAddResponse struct {
-	MangaID string `json:"manga_id"`
-	Title   string `json:"title"`
-	Status  string `json:"status"`
-	Rating  *int   `json:"rating"`
+	Message       string         `json:"message"`
+	LibraryStatus *LibraryStatus `json:"library_status"`
+	UserProgress  *UserProgress  `json:"user_progress,omitempty"`
 }
 
 // LibraryUpdateResponse is returned when updating a library entry.
@@ -41,15 +41,15 @@ type LibraryUpdateResponse struct {
 // AddToLibrary adds a manga to the user's library.
 func (c *Client) AddToLibrary(ctx context.Context, mangaID, status string, rating *int) (*LibraryAddResponse, error) {
 	payload := map[string]any{
-		"manga_id": mangaID,
-		"status":   status,
+		"status": status,
 	}
 	if rating != nil {
 		payload["rating"] = *rating
 	}
 
+	endpoint := fmt.Sprintf("/manga/%s/library", url.PathEscape(mangaID))
 	var resp LibraryAddResponse
-	if err := c.doRequest(ctx, http.MethodPost, "/library/add", payload, &resp); err != nil {
+	if err := c.doRequest(ctx, http.MethodPost, endpoint, payload, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

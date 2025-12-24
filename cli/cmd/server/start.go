@@ -29,6 +29,11 @@ var startCmd = &cobra.Command{
 		"mangahub server start --udp-only",
 	}, "\n"),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		format, err := output.GetFormat(cmd)
+		if err != nil {
+			return err
+		}
+
 		httpOnly, _ := cmd.Flags().GetBool("http-only")
 		tcpOnly, _ := cmd.Flags().GetBool("tcp-only")
 		udpOnly, _ := cmd.Flags().GetBool("udp-only")
@@ -43,17 +48,23 @@ var startCmd = &cobra.Command{
 		}
 
 		client := api.NewClient(cfg.Data.BaseURL, cfg.Data.Token)
-		status, err := client.GetServerStatus(cmd.Context())
+		status, err := serverstate.FetchStatus(cmd.Context(), client)
 		if err != nil {
 			return err
 		}
 
-		filtered := filterServices(status, httpOnly, tcpOnly, udpOnly)
-		serverstate.UpdateFromStatus(filtered)
-		serverstate.MarkRunning()
+		status = serverstate.FilterByMode(status, httpOnly, tcpOnly, udpOnly, false)
+		if format == output.FormatJSON {
+			output.PrintJSON(cmd, status)
+			return nil
+		}
 
-		cmd.Println("Live MangaHub Server Status")
-		output.PrintServerStatusTable(cmd, filtered)
+		if config.Runtime().Verbose {
+			output.PrintJSON(cmd, status)
+		}
+
+		cmd.Println("MangaHub Server Status")
+		output.PrintServerStatusTable(cmd, status)
 		return nil
 	},
 }
@@ -63,6 +74,7 @@ func init() {
 	startCmd.Flags().Bool("http-only", false, "Start only the HTTP server")
 	startCmd.Flags().Bool("tcp-only", false, "Start only the TCP server")
 	startCmd.Flags().Bool("udp-only", false, "Start only the UDP server")
+	output.AddFlag(startCmd)
 }
 
 func validateStartFlags(httpOnly, tcpOnly, udpOnly bool) error {
@@ -76,32 +88,4 @@ func validateStartFlags(httpOnly, tcpOnly, udpOnly bool) error {
 		return fmt.Errorf("only one of --http-only, --tcp-only, or --udp-only can be set")
 	}
 	return nil
-}
-
-func filterServices(status *api.ServerStatus, httpOnly, tcpOnly, udpOnly bool) *api.ServerStatus {
-	if status == nil {
-		return &api.ServerStatus{}
-	}
-
-	filtered := *status
-	filtered.Services = make([]api.ServiceStatus, 0, len(status.Services))
-
-	if !httpOnly && !tcpOnly && !udpOnly {
-		filtered.Services = append(filtered.Services, status.Services...)
-		return &filtered
-	}
-
-	for _, svc := range status.Services {
-		name := strings.ToLower(svc.Name)
-		switch {
-		case httpOnly && strings.Contains(name, "http"):
-			filtered.Services = append(filtered.Services, svc)
-		case tcpOnly && strings.Contains(name, "tcp"):
-			filtered.Services = append(filtered.Services, svc)
-		case udpOnly && strings.Contains(name, "udp"):
-			filtered.Services = append(filtered.Services, svc)
-		}
-	}
-
-	return &filtered
 }

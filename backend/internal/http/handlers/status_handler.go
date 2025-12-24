@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -19,6 +20,7 @@ import (
 	"github.com/ngocan-dev/mangahub/backend/internal/queue"
 	"github.com/ngocan-dev/mangahub/backend/internal/tcp"
 	"github.com/ngocan-dev/mangahub/backend/internal/udp"
+	mangapb "github.com/ngocan-dev/mangahub/backend/proto/manga"
 )
 
 // ServiceStatus describes the status of an individual service.
@@ -28,6 +30,7 @@ type ServiceStatus struct {
 	Address string `json:"address"`
 	Uptime  string `json:"uptime"`
 	Load    string `json:"load"`
+	Error   string `json:"error,omitempty"`
 }
 
 // DatabaseStatus captures connectivity and metadata for the DB.
@@ -67,6 +70,7 @@ type StatusHandler struct {
 	grpcAddress string
 	tcpAddress  string
 	udpAddress  string
+	wsAddress   string
 }
 
 // NewStatusHandler builds a new StatusHandler with the required dependencies.
@@ -96,6 +100,11 @@ func (h *StatusHandler) SetAddresses(api, grpcAddr, tcpAddr, udpAddr string) {
 	h.grpcAddress = grpcAddr
 	h.tcpAddress = tcpAddr
 	h.udpAddress = udpAddr
+}
+
+// SetWSAddress configures the WebSocket chat server address.
+func (h *StatusHandler) SetWSAddress(addr string) {
+	h.wsAddress = addr
 }
 
 // GetStatus aggregates live status information for the CLI.
@@ -131,20 +140,47 @@ func (h *StatusHandler) collectServices(ctx context.Context) ([]ServiceStatus, [
 		queueSize = h.writeQueue.Size()
 	}
 
-	services := []ServiceStatus{{
-		Name:    "HTTP API",
-		Status:  "online",
-		Address: h.apiAddress,
-		Uptime:  uptime.String(),
-		Load:    fmt.Sprintf("%d queued writes", queueSize),
-	}}
-
+	httpStatus := "online"
+	httpLoad := fmt.Sprintf("%d queued writes", queueSize)
+	httpError := ""
 	issues := make([]string, 0)
 
+	if h.db == nil {
+		httpStatus = "offline"
+		httpError = "database connection is not configured"
+		issues = append(issues, httpError)
+	} else {
+		pingCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+		defer cancel()
+
+		if err := h.db.PingContext(pingCtx); err != nil {
+			httpStatus = "offline"
+			httpLoad = "database unreachable"
+			httpError = fmt.Sprintf("http api cannot reach database: %v", err)
+			issues = append(issues, httpError)
+		} else if h.dbHealth != nil && !h.dbHealth.IsHealthy() {
+			httpStatus = "degraded"
+			httpLoad = "database unhealthy"
+			httpError = "database connection is unhealthy"
+			issues = append(issues, httpError)
+		}
+	}
+
+	services := []ServiceStatus{{
+		Name:    "HTTP API",
+		Status:  httpStatus,
+		Address: h.apiAddress,
+		Uptime:  uptime.String(),
+		Load:    httpLoad,
+		Error:   httpError,
+	}}
+
 	if h.grpcAddress != "" {
+		grpcError := ""
 		status, load, err := checkGRPC(ctx, h.grpcAddress)
 		if err != nil {
-			issues = append(issues, fmt.Sprintf("gRPC server unreachable: %v", err))
+			grpcError = fmt.Sprintf("gRPC server unreachable: %v", err)
+			issues = append(issues, grpcError)
 		}
 
 		services = append(services, ServiceStatus{
@@ -153,6 +189,7 @@ func (h *StatusHandler) collectServices(ctx context.Context) ([]ServiceStatus, [
 			Address: h.grpcAddress,
 			Uptime:  uptime.String(),
 			Load:    load,
+			Error:   grpcError,
 		})
 	}
 
@@ -160,19 +197,22 @@ func (h *StatusHandler) collectServices(ctx context.Context) ([]ServiceStatus, [
 		stats := h.tcpServer.Stats()
 		svcStatus := "offline"
 		load := "not running"
+		tcpError := ""
 
 		if stats.Running {
 			svcStatus = "online"
 			if stats.MaxClients > 0 {
 				load = fmt.Sprintf("%d/%d clients", stats.Clients, stats.MaxClients)
 				if stats.Clients >= stats.MaxClients {
-					issues = append(issues, "TCP sync server at capacity")
+					tcpError = "TCP sync server at capacity"
+					issues = append(issues, tcpError)
 				}
 			} else {
 				load = fmt.Sprintf("%d clients", stats.Clients)
 			}
 		} else {
-			issues = append(issues, "TCP sync server is not accepting connections")
+			tcpError = "TCP sync server is not accepting connections"
+			issues = append(issues, tcpError)
 		}
 
 		services = append(services, ServiceStatus{
@@ -181,6 +221,7 @@ func (h *StatusHandler) collectServices(ctx context.Context) ([]ServiceStatus, [
 			Address: h.tcpAddress,
 			Uptime:  uptime.String(),
 			Load:    load,
+			Error:   tcpError,
 		})
 	}
 
@@ -188,19 +229,22 @@ func (h *StatusHandler) collectServices(ctx context.Context) ([]ServiceStatus, [
 		stats := h.udpServer.Stats()
 		udpStatus := "offline"
 		udpLoad := "not running"
+		udpError := ""
 
 		if stats.Running {
 			udpStatus = "online"
 			if stats.MaxClients > 0 {
 				udpLoad = fmt.Sprintf("%d/%d clients", stats.Clients, stats.MaxClients)
 				if stats.Clients >= stats.MaxClients {
-					issues = append(issues, "UDP notification server at capacity")
+					udpError = "UDP notification server at capacity"
+					issues = append(issues, udpError)
 				}
 			} else {
 				udpLoad = fmt.Sprintf("%d clients", stats.Clients)
 			}
 		} else {
-			issues = append(issues, "UDP notification server is not accepting packets")
+			udpError = "UDP notification server is not accepting packets"
+			issues = append(issues, udpError)
 		}
 
 		services = append(services, ServiceStatus{
@@ -209,6 +253,25 @@ func (h *StatusHandler) collectServices(ctx context.Context) ([]ServiceStatus, [
 			Address: h.udpAddress,
 			Uptime:  uptime.String(),
 			Load:    udpLoad,
+			Error:   udpError,
+		})
+	}
+
+	if h.wsAddress != "" {
+		wsError := ""
+		status, load, err := checkWebSocket(ctx, h.wsAddress)
+		if err != nil {
+			wsError = fmt.Sprintf("WebSocket chat server unreachable: %v", err)
+			issues = append(issues, wsError)
+		}
+
+		services = append(services, ServiceStatus{
+			Name:    "WebSocket Chat",
+			Status:  status,
+			Address: h.wsAddress,
+			Uptime:  uptime.String(),
+			Load:    load,
+			Error:   wsError,
 		})
 	}
 
@@ -361,8 +424,85 @@ func checkGRPC(ctx context.Context, address string) (string, string, error) {
 	if err != nil {
 		return "offline", "unreachable", err
 	}
-	conn.Close()
-	return "online", "responsive", nil
+	defer conn.Close()
+
+	client := mangapb.NewMangaServiceClient(conn)
+	checkCtx, checkCancel := context.WithTimeout(ctx, 750*time.Millisecond)
+	defer checkCancel()
+
+	resp, err := client.SearchManga(checkCtx, &mangapb.SearchMangaRequest{Limit: 1})
+	if err != nil {
+		return "offline", "unreachable", err
+	}
+
+	loadParts := []string{}
+	if resp.Total > 0 {
+		loadParts = append(loadParts, fmt.Sprintf("%d total results", resp.Total))
+	}
+	if len(resp.Results) > 0 {
+		loadParts = append(loadParts, fmt.Sprintf("sample: %s", resp.Results[0].Title))
+	}
+	if resp.Pages > 0 {
+		loadParts = append(loadParts, fmt.Sprintf("page %d/%d", resp.Page, resp.Pages))
+	}
+
+	load := "no manga records"
+	if len(loadParts) > 0 {
+		load = strings.Join(loadParts, " | ")
+	}
+
+	return "online", load, nil
+}
+
+func checkWebSocket(ctx context.Context, address string) (string, string, error) {
+	url := address
+	switch {
+	case strings.HasPrefix(address, "ws://"):
+		url = "http://" + strings.TrimPrefix(address, "ws://")
+	case strings.HasPrefix(address, "wss://"):
+		url = "https://" + strings.TrimPrefix(address, "wss://")
+	case !strings.HasPrefix(address, "http://") && !strings.HasPrefix(address, "https://"):
+		url = "http://" + strings.TrimPrefix(address, "//")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSuffix(url, "/")+"/status", nil)
+	if err != nil {
+		return "offline", "unreachable", err
+	}
+
+	client := &http.Client{Timeout: 750 * time.Millisecond}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "offline", "unreachable", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return "offline", fmt.Sprintf("status %d", resp.StatusCode), fmt.Errorf("websocket status returned %d", resp.StatusCode)
+	}
+
+	var wsStatus struct {
+		Running bool   `json:"running"`
+		Clients int    `json:"clients"`
+		Rooms   int    `json:"rooms"`
+		Uptime  string `json:"uptime"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&wsStatus); err != nil {
+		return "offline", "invalid status payload", err
+	}
+
+	status := "offline"
+	if wsStatus.Running {
+		status = "online"
+	}
+
+	load := fmt.Sprintf("%d clients, %d rooms", wsStatus.Clients, wsStatus.Rooms)
+	if wsStatus.Uptime != "" {
+		load = fmt.Sprintf("%s | %s", wsStatus.Uptime, load)
+	}
+
+	return status, load, nil
 }
 
 func formatBytes(bytes int64) string {

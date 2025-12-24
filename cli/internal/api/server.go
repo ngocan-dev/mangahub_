@@ -15,6 +15,7 @@ type ServiceStatus struct {
 	Address string `json:"address"`
 	Uptime  string `json:"uptime"`
 	Load    string `json:"load"`
+	Error   string `json:"error"`
 }
 
 type DatabaseStatus struct {

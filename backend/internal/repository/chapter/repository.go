@@ -98,6 +98,39 @@ func (r *Repository) GetChapter(ctx context.Context, mangaID int64, chapterNumbe
 	return &chapter, nil
 }
 
+// GetChapterByID returns a chapter by its primary key.
+func (r *Repository) GetChapterByID(ctx context.Context, chapterID int64) (*pkgchapter.Chapter, error) {
+	if chapterID < 1 {
+		return nil, nil
+	}
+
+	var (
+		chapter   pkgchapter.Chapter
+		title     sql.NullString
+		content   sql.NullString
+		updatedAt sql.NullTime
+	)
+	err := r.db.QueryRowContext(ctx, `
+        SELECT Chapter_Id, Novel_Id, Chapter_Number, Chapter_Title, Content, Date_Updated
+        FROM Chapters
+        WHERE Chapter_Id = ?
+        LIMIT 1
+    `, chapterID).Scan(&chapter.ID, &chapter.MangaID, &chapter.Number, &title, &content, &updatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	chapter.Title = title.String
+	if updatedAt.Valid {
+		t := updatedAt.Time
+		chapter.UpdatedAt = &t
+	}
+	chapter.Content = content.String
+	return &chapter, nil
+}
+
 // ValidateChapter checks whether a chapter exists and returns its summary when present.
 func (r *Repository) ValidateChapter(ctx context.Context, mangaID int64, chapterNumber int) (*pkgchapter.ChapterSummary, error) {
 	if chapterNumber < 1 {
