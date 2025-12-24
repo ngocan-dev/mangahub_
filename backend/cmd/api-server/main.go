@@ -146,6 +146,7 @@ func main() {
 	mangaHandler.SetBroadcaster(broadcaster)
 	mangaHandler.SetDBHealth(healthMonitor)
 	mangaHandler.SetWriteQueue(writeQueue)
+	chapterHandler := handlers.NewChapterHandler(db)
 
 	friendRepo := friend.NewRepository(db)
 	friendService := friend.NewService(friendRepo, nil)
@@ -186,15 +187,22 @@ func main() {
 		notificationHandler = handlers.NewNotificationHandler(db, nil)
 	}
 
+	wsAddress := os.Getenv("WS_SERVER_ADDR")
+	if wsAddress == "" {
+		wsAddress = ":8081"
+	}
+
 	statusHandler := handlers.NewStatusHandler(startTime, db, healthMonitor, writeQueue, dsn)
 	statusHandler.SetTCPServer(tcpServer)
 	if udpServer != nil {
 		statusHandler.SetUDPServer(udpServer)
 	}
+	syncHandler := handlers.NewSyncStatusHandler(db, healthMonitor, tcpServer, dsn)
 
 	apiAddress := ":8080"
 	grpcAddress := os.Getenv("GRPC_SERVER_ADDR")
 	statusHandler.SetAddresses(apiAddress, grpcAddress, tcpAddress, udpAddress)
+	statusHandler.SetWSAddress(wsAddress)
 
 	// Initialize rate limiter for handling 50-100 concurrent users
 	// API response times remain under 500ms
@@ -215,6 +223,7 @@ func main() {
 	r.POST("/register", userHandler.Register)
 
 	r.GET("/server/status", statusHandler.GetStatus)
+	r.GET("/sync/status", syncHandler.GetStatus)
 
 	// Route: Login
 	r.POST("/login", authHandler.Login)
@@ -232,6 +241,9 @@ func main() {
 
 	// Route: Get Manga Details
 	r.GET("/manga/:id", mangaHandler.GetDetails)
+
+	// Route: Get Chapter Details
+	r.GET("/chapters/:id", chapterHandler.GetChapter)
 
 	// Route: Add Manga to Library
 	r.POST("/manga/:id/library", mangaHandler.AddToLibrary)

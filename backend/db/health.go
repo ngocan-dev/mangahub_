@@ -42,6 +42,13 @@ func (hm *HealthMonitor) IsHealthy() bool {
 	return hm.isHealthy
 }
 
+// LastCheck returns the timestamp of the most recent health check.
+func (hm *HealthMonitor) LastCheck() time.Time {
+	hm.mu.RLock()
+	defer hm.mu.RUnlock()
+	return hm.lastCheck
+}
+
 // Start begins monitoring the database health
 func (hm *HealthMonitor) Start() {
 	go hm.monitor()

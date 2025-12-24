@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"log"
 	"net/http"
@@ -43,6 +44,11 @@ func main() {
 		websocket.ServeWS(hub, w, r)
 	})
 
+	http.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
+		status := hub.Status()
+		writeStatus(w, status)
+	})
+
 	// Handle graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -71,4 +77,11 @@ func main() {
 	}
 
 	log.Println("WebSocket server stopped")
+}
+
+func writeStatus(w http.ResponseWriter, status websocket.HubStatus) {
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(status); err != nil {
+		http.Error(w, "unable to encode status", http.StatusInternalServerError)
+	}
 }

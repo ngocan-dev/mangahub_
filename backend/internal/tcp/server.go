@@ -27,6 +27,13 @@ type Server struct {
 	running       atomic.Bool
 }
 
+// Stats describes the current runtime state of the TCP server.
+type Stats struct {
+	Running    bool
+	Clients    int
+	MaxClients int
+}
+
 // NewServer creates a new TCP server instance
 // TCP and WebSocket connections remain stable
 func NewServer(address string, maxClients int, db *sql.DB) *Server {
@@ -416,6 +423,18 @@ func (s *Server) GetClientCount() int {
 // IsRunning returns whether the TCP server is currently accepting connections
 func (s *Server) IsRunning() bool {
 	return s.running.Load()
+}
+
+// Stats returns current runtime metrics for the TCP server.
+func (s *Server) Stats() Stats {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return Stats{
+		Running:    s.running.Load(),
+		Clients:    len(s.clients),
+		MaxClients: s.maxClients,
+	}
 }
 
 // sendConnectionError sends an error message for connections that cannot be fully initialized

@@ -31,7 +31,6 @@ var stopCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-
 		if format == output.FormatJSON {
 			output.PrintJSON(cmd, status)
 			return nil

@@ -15,21 +15,30 @@ import (
 	"golang.org/x/term"
 )
 
-var loginCmd = &cobra.Command{
-	Use:   "login",
-	Short: "Login to your MangaHub account",
-	RunE:  runAuthLogin,
+var loginCmd = NewLoginCommand("login", "Login to your MangaHub account", "")
+
+// NewLoginCommand builds a reusable login command.
+func NewLoginCommand(use, short, example string) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     use,
+		Short:   short,
+		Example: example,
+		RunE:    runAuthLogin,
+	}
+	cmd.Flags().String("username", "", "Username for login")
+	cmd.Flags().String("email", "", "Email for login")
+	cmd.Flags().String("password", "", "Password for login (optional; will prompt if empty)")
+	return cmd
 }
 
 func init() {
 	AuthCmd.AddCommand(loginCmd)
-	loginCmd.Flags().String("username", "", "Username for login")
-	loginCmd.Flags().String("email", "", "Email for login")
 }
 
 func runAuthLogin(cmd *cobra.Command, args []string) error {
 	username, _ := cmd.Flags().GetString("username")
 	email, _ := cmd.Flags().GetString("email")
+	password, _ := cmd.Flags().GetString("password")
 
 	if username == "" && email == "" {
 		return errors.New("either --username or --email is required")
@@ -39,11 +48,14 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 		return errors.New("Please use either --username OR --email")
 	}
 
-	fmt.Fprint(cmd.OutOrStdout(), "Password: ")
-	password, err := term.ReadPassword(int(syscall.Stdin))
-	fmt.Fprintln(cmd.OutOrStdout())
-	if err != nil {
-		return err
+	if password == "" {
+		fmt.Fprint(cmd.OutOrStdout(), "Password: ")
+		rawPassword, err := term.ReadPassword(int(syscall.Stdin))
+		fmt.Fprintln(cmd.OutOrStdout())
+		if err != nil {
+			return err
+		}
+		password = string(rawPassword)
 	}
 
 	cfg := config.ManagerInstance()
@@ -52,7 +64,7 @@ func runAuthLogin(cmd *cobra.Command, args []string) error {
 	}
 
 	client := api.NewClient(cfg.Data.BaseURL, cfg.Data.Token)
-	resp, err := client.Login(cmd.Context(), username, email, string(password))
+	resp, err := client.Login(cmd.Context(), username, email, password)
 	if err != nil {
 		handleLoginError(cmd, err, username, email)
 		return err

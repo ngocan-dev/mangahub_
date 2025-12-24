@@ -269,17 +269,11 @@ func compareStrings(a, b, order string) bool {
 	return strings.ToLower(a) < strings.ToLower(b)
 }
 
-func parseTime(value string) time.Time {
-	if value == "" {
+func parseTime(value *time.Time) time.Time {
+	if value == nil {
 		return time.Time{}
 	}
-	if t, err := time.Parse(time.RFC3339, value); err == nil {
-		return t
-	}
-	if t, err := time.Parse("2006-01-02", value); err == nil {
-		return t
-	}
-	return time.Time{}
+	return *value
 }
 
 func formatChapterProgress(current int, total *int) string {
@@ -300,41 +294,31 @@ func formatRating(rating *int) string {
 	return fmt.Sprintf("%d/10", *rating)
 }
 
-func formatStartedAt(started string) string {
-	if started == "" {
+func formatStartedAt(started *time.Time) string {
+	if started == nil || started.IsZero() {
 		return "-"
 	}
-	if t, err := time.Parse("2006-01-02", started); err == nil {
-		return t.Format("2006-01")
-	}
-	return started
+	return started.Format("2006-01")
 }
 
-func formatCompletedAt(completed, updated string) string {
-	date := completed
-	if date == "" {
-		date = updated
-	}
-	if date == "" {
+func formatCompletedAt(completed, updated *time.Time) string {
+	var date time.Time
+	switch {
+	case completed != nil && !completed.IsZero():
+		date = *completed
+	case updated != nil && !updated.IsZero():
+		date = *updated
+	default:
 		return "-"
 	}
-	if t, err := time.Parse(time.RFC3339, date); err == nil {
-		return t.Format("2006-01-02")
-	}
-	if t, err := time.Parse("2006-01-02", date); err == nil {
-		return t.Format("2006-01-02")
-	}
-	return date
+	return date.Format("2006-01-02")
 }
 
-func humanizeUpdatedAt(updated string) string {
-	if updated == "" {
+func humanizeUpdatedAt(updated *time.Time) string {
+	if updated == nil || updated.IsZero() {
 		return "-"
 	}
-	t, err := time.Parse(time.RFC3339, updated)
-	if err != nil {
-		return updated
-	}
+	t := *updated
 	diff := time.Since(t)
 	if diff < 0 {
 		diff = 0

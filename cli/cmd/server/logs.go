@@ -3,7 +3,6 @@ package server
 import (
 	"fmt"
 
-	serverstate "github.com/ngocan-dev/mangahub_/cli/internal/server"
 	"github.com/spf13/cobra"
 )
 
@@ -16,7 +15,7 @@ var logsCmd = &cobra.Command{
 		follow, _ := cmd.Flags().GetBool("follow")
 		level, _ := cmd.Flags().GetString("level")
 
-		cmd.Println("Showing logs from: " + serverstate.LogPath())
+		cmd.Println("Showing server logs")
 
 		if level != "" && level != "info" {
 			cmd.Println(fmt.Sprintf("Filter: level=%s", level))

@@ -23,7 +23,7 @@ func FetchStatus(ctx context.Context, client *api.Client) (*api.ServerStatus, er
 }
 
 // FilterByMode returns a copy of the server status filtered by the selected service flags.
-func FilterByMode(status *api.ServerStatus, httpOnly, tcpOnly, udpOnly bool) *api.ServerStatus {
+func FilterByMode(status *api.ServerStatus, httpOnly, tcpOnly, udpOnly, grpcOnly bool) *api.ServerStatus {
 	if status == nil {
 		return nil
 	}
@@ -35,6 +35,7 @@ func FilterByMode(status *api.ServerStatus, httpOnly, tcpOnly, udpOnly bool) *ap
 		{httpOnly, func(s api.ServiceStatus) bool { return strings.Contains(strings.ToLower(s.Name), "http") }},
 		{tcpOnly, func(s api.ServiceStatus) bool { return strings.Contains(strings.ToLower(s.Name), "tcp") }},
 		{udpOnly, func(s api.ServiceStatus) bool { return strings.Contains(strings.ToLower(s.Name), "udp") }},
+		{grpcOnly, func(s api.ServiceStatus) bool { return strings.Contains(strings.ToLower(s.Name), "grpc") }},
 	}
 
 	applyFilter := false

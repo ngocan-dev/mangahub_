@@ -2,6 +2,7 @@ package manga
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/ngocan-dev/mangahub_/cli/internal/api"
@@ -102,11 +103,18 @@ func fromListItems(items []api.MangaListItem) [][]string {
 	for _, item := range items {
 		rows = append(rows, []string{
 			item.ID,
-			formatTitleCell(item.Title, item.AltTitles),
+			formatTitleCell(item.Title, strings.Join(item.AltTitles, ", ")),
 			formatAuthorCell(item.Author),
 			formatStatus(item.Status),
 			formatChapterCount(item.Chapters),
 		})
 	}
 	return rows
+}
+
+func formatChapterCount(chapters int) string {
+	if chapters <= 0 {
+		return "Unknown"
+	}
+	return fmt.Sprintf("%d", chapters)
 }

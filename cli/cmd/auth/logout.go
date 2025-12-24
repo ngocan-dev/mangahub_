@@ -16,6 +16,17 @@ var logoutCmd = &cobra.Command{
 	RunE:    runAuthLogout,
 }
 
+// NewLogoutCommand builds a reusable logout command.
+func NewLogoutCommand(use, short, long, example string) *cobra.Command {
+	return &cobra.Command{
+		Use:     use,
+		Short:   short,
+		Long:    long,
+		Example: example,
+		RunE:    runAuthLogout,
+	}
+}
+
 func init() {
 	AuthCmd.AddCommand(logoutCmd)
 }

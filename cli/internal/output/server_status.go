@@ -15,6 +15,7 @@ const (
 	addressColumnWidth = 21
 	uptimeColumnWidth  = 12
 	loadColumnWidth    = 14
+	errorColumnWidth   = 28
 )
 
 func PrintServerStatusTable(cmd *cobra.Command, st *api.ServerStatus) {
@@ -22,8 +23,8 @@ func PrintServerStatusTable(cmd *cobra.Command, st *api.ServerStatus) {
 		return
 	}
 
-	widths := []int{serviceColumnWidth, statusColumnWidth, addressColumnWidth, uptimeColumnWidth, loadColumnWidth}
-	headers := []string{"Service", "Status", "Address", "Uptime", "Load"}
+	widths := []int{serviceColumnWidth, statusColumnWidth, addressColumnWidth, uptimeColumnWidth, loadColumnWidth, errorColumnWidth}
+	headers := []string{"Service", "Status", "Address", "Uptime", "Load", "Error"}
 
 	for i, header := range headers {
 		if runes := utf8.RuneCountInString(header) + 1; runes > widths[i] {
@@ -32,7 +33,7 @@ func PrintServerStatusTable(cmd *cobra.Command, st *api.ServerStatus) {
 	}
 
 	for _, svc := range st.Services {
-		cols := []string{svc.Name, FormatStatus(svc.Status), svc.Address, svc.Uptime, svc.Load}
+		cols := []string{svc.Name, FormatStatus(svc.Status), svc.Address, svc.Uptime, svc.Load, svc.Error}
 		for i, col := range cols {
 			if runes := utf8.RuneCountInString(col) + 1; runes > widths[i] {
 				widths[i] = runes
@@ -46,7 +47,7 @@ func PrintServerStatusTable(cmd *cobra.Command, st *api.ServerStatus) {
 	cmd.Println(formatRow(headers, widths))
 	cmd.Println(buildBorder("├", "┼", "┤", widths))
 	for _, svc := range st.Services {
-		cmd.Println(formatRow([]string{svc.Name, FormatStatus(svc.Status), svc.Address, svc.Uptime, svc.Load}, widths))
+		cmd.Println(formatRow([]string{svc.Name, FormatStatus(svc.Status), svc.Address, svc.Uptime, svc.Load, svc.Error}, widths))
 	}
 	cmd.Println(buildBorder("└", "┴", "┘", widths))
 	cmd.Println()

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ngocan-dev/mangahub/backend/internal/auth"
@@ -20,6 +21,12 @@ type Hub struct {
 
 	// All registered clients
 	clients map[*Client]bool
+
+	// Track whether the hub is running
+	running atomic.Bool
+
+	// Start time for uptime calculations
+	startedAt time.Time
 
 	// Inbound messages from clients
 	broadcast chan []byte
@@ -37,6 +44,14 @@ type Hub struct {
 	mu sync.RWMutex
 }
 
+// HubStatus provides runtime metrics for the WebSocket hub.
+type HubStatus struct {
+	Running bool   `json:"running"`
+	Clients int    `json:"clients"`
+	Rooms   int    `json:"rooms"`
+	Uptime  string `json:"uptime"`
+}
+
 // NewHub creates a new hub instance
 // TCP and WebSocket connections remain stable
 func NewHub(db *sql.DB) *Hub {
@@ -47,11 +62,15 @@ func NewHub(db *sql.DB) *Hub {
 		register:   make(chan *Client, 100), // Buffered channels to prevent blocking
 		unregister: make(chan *Client, 100),
 		db:         db,
+		startedAt:  time.Now(),
 	}
 }
 
 // Run starts the hub
 func (h *Hub) Run(ctx context.Context) {
+	h.running.Store(true)
+	defer h.running.Store(false)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -474,6 +493,21 @@ func (h *Hub) removeClient(client *Client) {
 		if len(room) == 0 {
 			delete(h.rooms, roomID)
 		}
+	}
+}
+
+// Status returns live metrics about the hub without leaking internal maps.
+func (h *Hub) Status() HubStatus {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	uptime := time.Since(h.startedAt).Round(time.Second)
+
+	return HubStatus{
+		Running: h.running.Load(),
+		Clients: len(h.clients),
+		Rooms:   len(h.rooms),
+		Uptime:  uptime.String(),
 	}
 }
 

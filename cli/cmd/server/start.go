@@ -53,8 +53,7 @@ var startCmd = &cobra.Command{
 			return err
 		}
 
-		status = serverstate.FilterByMode(status, httpOnly, tcpOnly, udpOnly)
-
+		status = serverstate.FilterByMode(status, httpOnly, tcpOnly, udpOnly, false)
 		if format == output.FormatJSON {
 			output.PrintJSON(cmd, status)
 			return nil

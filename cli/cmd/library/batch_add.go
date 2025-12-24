@@ -78,7 +78,7 @@ var batchAddCmd = &cobra.Command{
 		failed := 0
 
 		for _, id := range ids {
-			resp, err := client.AddToLibrary(cmd.Context(), id, status, nil)
+			_, err := client.AddToLibrary(cmd.Context(), id, status, nil)
 			if err != nil {
 				_ = handleAddError(cmd, err, id)
 				if quiet {
@@ -89,7 +89,7 @@ var batchAddCmd = &cobra.Command{
 			}
 
 			if quiet {
-				cmd.Println(resp.MangaID)
+				cmd.Println(id)
 				success++
 				continue
 			}
