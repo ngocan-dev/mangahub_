@@ -5,13 +5,13 @@ import (
 	"database/sql"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 
-	db, err := sql.Open("sqlite3", ":memory:")
+	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)
 	}
@@ -28,6 +28,17 @@ func setupTestDB(t *testing.T) *sql.DB {
         Image TEXT,
         Rating_Point REAL,
         Date_Updated DATETIME
+    );
+
+    CREATE VIRTUAL TABLE NovelSearch USING fts5(
+        Novel_Name,
+        Title,
+        Author,
+        Genre,
+        Status,
+        Description,
+        content='Novels',
+        content_rowid='Novel_Id'
     );
     `
 
@@ -65,6 +76,10 @@ func seedNovels(t *testing.T, db *sql.DB) {
 		if err != nil {
 			t.Fatalf("failed to insert novel %s: %v", novel.name, err)
 		}
+	}
+
+	if _, err := db.Exec(`INSERT INTO NovelSearch(NovelSearch) VALUES('rebuild')`); err != nil {
+		t.Fatalf("failed to sync FTS index: %v", err)
 	}
 }
 
