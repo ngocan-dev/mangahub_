@@ -2,7 +2,6 @@ package auth
 
 import (
 	"errors"
-	"os"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -14,17 +13,15 @@ var (
 	ErrInvalidSigningMethod = errors.New("invalid signing method")
 	ErrInvalidClaims        = errors.New("invalid token claims")
 	ErrTokenNotBefore       = errors.New("token not yet valid")
-	jwtSecret               = []byte(getJWTSecret())
+	jwtSecret               = []byte("mangahub-secret-key-change-in-production")
 )
 
-// getJWTSecret retrieves JWT secret from environment or uses default
-func getJWTSecret() string {
-	secret := os.Getenv("JWT_SECRET")
+// SetSecret overrides the JWT secret used for signing and validation.
+func SetSecret(secret string) {
 	if secret == "" {
-		// Default secret for development - should be changed in production
-		secret = "mangahub-secret-key-change-in-production"
+		return
 	}
-	return secret
+	jwtSecret = []byte(secret)
 }
 
 // Claims represents JWT claims

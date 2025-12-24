@@ -6,7 +6,6 @@ import (
 	"flag"
 	"log"
 	"net"
-	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -16,6 +15,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	dbpkg "github.com/ngocan-dev/mangahub/backend/db"
+	"github.com/ngocan-dev/mangahub/backend/internal/config"
 	grpcserver "github.com/ngocan-dev/mangahub/backend/internal/grpc"
 	"github.com/ngocan-dev/mangahub/backend/internal/queue"
 	"github.com/ngocan-dev/mangahub/backend/internal/tcp"
@@ -50,6 +50,11 @@ func main() {
 	dbPath := flag.String("db", "file:data/mangahub.db?_foreign_keys=on", "Database connection string")
 	flag.Parse()
 
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("failed to load config: %v", err)
+	}
+
 	// Open database connection
 	db, err := dbpkg.OpenSQLite(*dbPath, nil)
 	if err != nil {
@@ -58,7 +63,7 @@ func main() {
 	defer db.Close()
 
 	// Initialize TCP broadcaster for real-time sync
-	tcpAddress := os.Getenv("TCP_SERVER_ADDR")
+	tcpAddress := cfg.App.TCPServerAddr
 	if tcpAddress == "" {
 		tcpAddress = ":9000"
 	}
