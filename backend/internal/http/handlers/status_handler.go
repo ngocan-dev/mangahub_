@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 	"time"
 
 	"google.golang.org/grpc"
@@ -352,20 +351,6 @@ func collectResources() ResourceStatus {
 		CPU:    fmt.Sprintf("%d goroutines", runtime.NumGoroutine()),
 		Disk:   disk,
 	}
-}
-
-func diskUsage(path string) (string, error) {
-	var stat syscall.Statfs_t
-	if err := syscall.Statfs(path, &stat); err != nil {
-		return "", err
-	}
-
-	total := int64(stat.Blocks) * int64(stat.Bsize)
-	free := int64(stat.Bfree) * int64(stat.Bsize)
-	used := total - free
-	percent := float64(used) / float64(total) * 100
-
-	return fmt.Sprintf("%.1f%% of %s used", percent, formatBytes(total)), nil
 }
 
 func checkGRPC(ctx context.Context, address string) (string, string, error) {
