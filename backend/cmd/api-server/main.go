@@ -15,6 +15,7 @@ import (
 	dbpkg "github.com/ngocan-dev/mangahub/backend/db"
 	"github.com/ngocan-dev/mangahub/backend/domain/friend"
 	"github.com/ngocan-dev/mangahub/backend/internal/cache"
+	"github.com/ngocan-dev/mangahub/backend/internal/config"
 	"github.com/ngocan-dev/mangahub/backend/internal/http/handlers"
 	"github.com/ngocan-dev/mangahub/backend/internal/middleware"
 	"github.com/ngocan-dev/mangahub/backend/internal/queue"
@@ -59,10 +60,13 @@ func startTCPServerWithRestart(ctx context.Context, server *tcp.Server, address 
 
 func main() {
 	startTime := time.Now()
-	// Mở database từ đúng thư mục Migration
-	dsn := "file:data/mangahub.db?_foreign_keys=on"
 
-	db, err := dbpkg.OpenSQLite(dsn, &dbpkg.PoolConfig{
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("failed to load config: %v", err)
+	}
+
+	db, err := dbpkg.Open(cfg.DBDriver, cfg.DBDSN, &dbpkg.PoolConfig{
 		MaxOpenConns:    25,
 		MaxIdleConns:    5,
 		ConnMaxLifetime: 5 * time.Minute,
@@ -81,12 +85,9 @@ func main() {
 	// Initialize Redis cache if available
 	// Step 1: System identifies frequently requested manga (handled by cache service)
 	var mangaCache *cache.MangaCache
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6379" // Default Redis address
-	}
-	redisPassword := os.Getenv("REDIS_PASSWORD")
-	redisDB := 0 // Default database
+	redisAddr := cfg.RedisAddr
+	redisPassword := cfg.RedisPassword
+	redisDB := cfg.RedisDB
 
 	redisClient, err := cache.NewClient(redisAddr, redisPassword, redisDB)
 	if err != nil {
@@ -108,7 +109,7 @@ func main() {
 	writeQueue := queue.NewWriteQueue(1000, 3, nil) // Max 1000 operations, 3 retries
 
 	// Start TCP broadcaster for progress updates
-	tcpAddress := os.Getenv("TCP_SERVER_ADDR")
+	tcpAddress := cfg.TCPServerAddr
 	if tcpAddress == "" {
 		tcpAddress = ":9000"
 	}
@@ -153,7 +154,7 @@ func main() {
 	friendHandler := handlers.NewFriendHandler(friendService)
 
 	// Initialize UDP server for chapter release notifications
-	udpAddress := os.Getenv("UDP_SERVER_ADDR")
+	udpAddress := cfg.UDPServerAddr
 	if udpAddress == "" {
 		udpAddress = ":9091"
 	}
@@ -187,20 +188,20 @@ func main() {
 		notificationHandler = handlers.NewNotificationHandler(db, nil)
 	}
 
-	wsAddress := os.Getenv("WS_SERVER_ADDR")
+	wsAddress := cfg.WSServerAddr
 	if wsAddress == "" {
 		wsAddress = ":8081"
 	}
 
-	statusHandler := handlers.NewStatusHandler(startTime, db, healthMonitor, writeQueue, dsn)
+	statusHandler := handlers.NewStatusHandler(startTime, db, healthMonitor, writeQueue, cfg.DBDSN)
 	statusHandler.SetTCPServer(tcpServer)
 	if udpServer != nil {
 		statusHandler.SetUDPServer(udpServer)
 	}
-	syncHandler := handlers.NewSyncStatusHandler(db, healthMonitor, tcpServer, dsn)
+	syncHandler := handlers.NewSyncStatusHandler(db, healthMonitor, tcpServer, cfg.DBDSN)
 
 	apiAddress := ":8080"
-	grpcAddress := os.Getenv("GRPC_SERVER_ADDR")
+	grpcAddress := cfg.GRPCServerAddr
 	statusHandler.SetAddresses(apiAddress, grpcAddress, tcpAddress, udpAddress)
 	statusHandler.SetWSAddress(wsAddress)
 
