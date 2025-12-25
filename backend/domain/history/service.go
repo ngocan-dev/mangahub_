@@ -2,6 +2,7 @@ package history
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -242,4 +243,42 @@ func (s *Service) GetReadingAnalytics(ctx context.Context, userID int64, req Rea
 	}
 
 	return stats, nil
+}
+
+// GetReadingSummary returns lean reading statistics that are safe for empty users.
+func (s *Service) GetReadingSummary(ctx context.Context, userID int64) (*ReadingSummary, error) {
+	summary, err := s.repo.GetReadingSummary(ctx, userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return &ReadingSummary{}, nil
+		}
+		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
+	}
+	if summary == nil {
+		return &ReadingSummary{}, nil
+	}
+	return summary, nil
+}
+
+// GetReadingAnalyticsBuckets returns grouped analytics and always succeeds with defaults.
+func (s *Service) GetReadingAnalyticsBuckets(ctx context.Context, userID int64) (*ReadingAnalyticsResponse, error) {
+	resp, err := s.repo.GetReadingAnalyticsBuckets(ctx, userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return &ReadingAnalyticsResponse{
+				Daily:   []ReadingAnalyticsPoint{},
+				Weekly:  []ReadingAnalyticsPoint{},
+				Monthly: []ReadingAnalyticsPoint{},
+			}, nil
+		}
+		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
+	}
+	if resp == nil {
+		return &ReadingAnalyticsResponse{
+			Daily:   []ReadingAnalyticsPoint{},
+			Weekly:  []ReadingAnalyticsPoint{},
+			Monthly: []ReadingAnalyticsPoint{},
+		}, nil
+	}
+	return resp, nil
 }

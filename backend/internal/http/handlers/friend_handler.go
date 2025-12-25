@@ -144,6 +144,7 @@ func (h *FriendHandler) AcceptRequest(c *gin.Context) {
 func RequireUserID(c *gin.Context) (int64, bool) {
 	userIDInterface, exists := c.Get("user_id")
 	if !exists {
+		log.Printf("RequireUserID: missing user_id in context")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
 		return 0, false
 	}
@@ -154,11 +155,13 @@ func RequireUserID(c *gin.Context) (int64, bool) {
 	case string:
 		parsed, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
+			log.Printf("RequireUserID: invalid user_id type string=%q err=%v", v, err)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user context"})
 			return 0, false
 		}
 		return parsed, true
 	default:
+		log.Printf("RequireUserID: unsupported user_id type %T", userIDInterface)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user context"})
 		return 0, false
 	}
