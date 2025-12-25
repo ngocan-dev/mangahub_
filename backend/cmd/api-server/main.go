@@ -18,6 +18,8 @@ import (
 	"github.com/ngocan-dev/mangahub/backend/internal/http/handlers"
 	"github.com/ngocan-dev/mangahub/backend/internal/middleware"
 	"github.com/ngocan-dev/mangahub/backend/internal/queue"
+	chapterrepository "github.com/ngocan-dev/mangahub/backend/internal/repository/chapter"
+	chapterservice "github.com/ngocan-dev/mangahub/backend/internal/service/chapter"
 	"github.com/ngocan-dev/mangahub/backend/internal/tcp"
 	"github.com/ngocan-dev/mangahub/backend/internal/udp"
 )
@@ -127,6 +129,15 @@ func main() {
 	// Set health monitor and write queue on service
 	mangaService.SetDBHealth(healthMonitor)
 	mangaService.SetWriteQueue(writeQueue)
+
+	chapterRepo := chapterrepository.NewRepository(db)
+	chapterSvc := chapterservice.NewService(chapterRepo)
+
+	bootstrapCtx, cancelBootstrap := context.WithTimeout(context.Background(), 15*time.Second)
+	if err := bootstrapDemoManga(bootstrapCtx, mangaService, chapterSvc); err != nil {
+		log.Printf("demo bootstrap failed: %v", err)
+	}
+	cancelBootstrap()
 
 	// Initialize write processor
 	writeProcessor := queue.NewWriteProcessor(writeQueue, mangaService, db, broadcaster)
