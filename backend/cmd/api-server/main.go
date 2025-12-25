@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	_ "modernc.org/sqlite" // Dùng driver giống migration
+	_ "github.com/go-sql-driver/mysql" // Dùng driver giống migration
 
 	dbpkg "github.com/ngocan-dev/mangahub/backend/db"
 	"github.com/ngocan-dev/mangahub/backend/domain/friend"
@@ -63,6 +63,9 @@ func main() {
 	startTime := time.Now()
 
 	cfg, err := config.Load()
+	log.Println("DB DRIVER =", cfg.DB.Driver)
+	log.Println("DB DSN =", cfg.DB.DSN)
+
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}
@@ -133,11 +136,18 @@ func main() {
 	chapterRepo := chapterrepository.NewRepository(db)
 	chapterSvc := chapterservice.NewService(chapterRepo)
 
-	bootstrapCtx, cancelBootstrap := context.WithTimeout(context.Background(), 15*time.Second)
-	if err := bootstrapDemoManga(bootstrapCtx, mangaService, chapterSvc); err != nil {
-		log.Printf("demo bootstrap failed: %v", err)
+	if cfg.EnableDemoData {
+		log.Println("⚠️ Loading DEMO data from SQLite")
+
+		bootstrapCtx, cancelBootstrap := context.WithTimeout(context.Background(), 15*time.Second)
+		if err := bootstrapDemoManga(bootstrapCtx, mangaService, chapterSvc); err != nil {
+			log.Printf("demo bootstrap failed: %v", err)
+		}
+		cancelBootstrap()
+
+	} else {
+		log.Println("✅ Demo bootstrap skipped")
 	}
-	cancelBootstrap()
 
 	// Initialize write processor
 	writeProcessor := queue.NewWriteProcessor(writeQueue, mangaService, db, broadcaster)
@@ -241,13 +251,13 @@ func main() {
 	r.POST("/friends/requests/accept", authHandler.RequireAuth, friendHandler.AcceptRequest)
 
 	// Route: Get Popular Manga (cached)
-	r.GET("/manga/popular", mangaHandler.GetPopularManga)
+	r.GET("/mangas/popular", mangaHandler.GetPopularManga)
 
 	// Route: Search Manga
-	r.GET("/manga/search", mangaHandler.Search)
+	r.GET("/mangas/search", mangaHandler.Search)
 
 	// Route: Get Manga Details
-	r.GET("/manga/:id", mangaHandler.GetDetails)
+	r.GET("/mangas/:id", mangaHandler.GetDetails)
 
 	// Route: Get Library for authenticated user
 	r.GET("/library", authHandler.RequireAuth, mangaHandler.GetLibrary)
@@ -256,16 +266,16 @@ func main() {
 	r.GET("/chapters/:id", chapterHandler.GetChapter)
 
 	// Route: Add Manga to Library
-	r.POST("/manga/:id/library", mangaHandler.AddToLibrary)
+	r.POST("/mangas/:id/library", mangaHandler.AddToLibrary)
 
 	// Route: Update Reading Progress (requires authentication)
-	r.PUT("/manga/:id/progress", authHandler.RequireAuth, mangaHandler.UpdateProgress)
+	r.PUT("/mangas/:id/progress", authHandler.RequireAuth, mangaHandler.UpdateProgress)
 
 	// Route: Create Review (requires authentication)
-	r.POST("/manga/:id/reviews", authHandler.RequireAuth, mangaHandler.CreateReview)
+	r.POST("/mangas/:id/reviews", authHandler.RequireAuth, mangaHandler.CreateReview)
 
 	// Route: Get Reviews
-	r.GET("/manga/:id/reviews", mangaHandler.GetReviews)
+	r.GET("/mangas/:id/reviews", mangaHandler.GetReviews)
 
 	// Route: Get Friends Activity Feed (requires authentication)
 	r.GET("/friends/activity", authHandler.RequireAuth, mangaHandler.GetFriendsActivityFeed)

@@ -87,6 +87,8 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	enableDemoData := os.Getenv("ENABLE_DEMO_DATA") == "true"
+
 	cfg := Config{
 		App: AppConfig{
 			RedisURL:       redisURL,
@@ -115,6 +117,7 @@ func Load() (*Config, error) {
 		Auth: AuthConfig{
 			JWTSecret: jwtSecret,
 		},
+		EnableDemoData: enableDemoData,
 	}
 
 	return &cfg, nil

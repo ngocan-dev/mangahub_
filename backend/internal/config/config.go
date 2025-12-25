@@ -7,6 +7,8 @@ type Config struct {
 	GRPC GRPCConfig
 	UDP  UDPConfig
 	Auth AuthConfig
+
+	EnableDemoData bool
 }
 
 type AppConfig struct {
