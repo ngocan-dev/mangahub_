@@ -49,7 +49,11 @@ func NewService(repo *libraryrepository.Repository, mangaService internalmanga.G
 
 // AddToLibrary inserts manga into user's library
 func (s *Service) AddToLibrary(ctx context.Context, userID, mangaID int64, req domainlibrary.AddToLibraryRequest) (*domainlibrary.AddToLibraryResponse, error) {
-	if !validStatuses[req.Status] {
+	status := req.Status
+	if status == "" {
+		status = "reading"
+	}
+	if !validStatuses[status] {
 		return nil, ErrInvalidStatus
 	}
 
@@ -69,24 +73,21 @@ func (s *Service) AddToLibrary(ctx context.Context, userID, mangaID int64, req d
 		return nil, ErrMangaAlreadyInLibrary
 	}
 
-	if err := s.repo.AddToLibrary(ctx, userID, mangaID, req.Status, req.CurrentChapter); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
+	currentChapter := req.CurrentChapter
+	if currentChapter < 0 {
+		currentChapter = 0
 	}
 
-	libraryStatus, err := s.repo.GetLibraryStatus(ctx, userID, mangaID)
-	if err != nil {
+	if err := s.repo.AddToLibrary(ctx, userID, mangaID, status, currentChapter); err != nil {
+		if errors.Is(err, libraryrepository.ErrDuplicateEntry) {
+			return nil, ErrMangaAlreadyInLibrary
+		}
 		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
-	}
-
-	var progress *history.UserProgress
-	if s.progressSvc != nil {
-		progress, _ = s.progressSvc.GetProgress(ctx, userID, mangaID)
 	}
 
 	return &domainlibrary.AddToLibraryResponse{
-		Message:       "manga added to library successfully",
-		LibraryStatus: libraryStatus,
-		UserProgress:  progress,
+		Status:         status,
+		CurrentChapter: currentChapter,
 	}, nil
 }
 
