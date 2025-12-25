@@ -143,7 +143,13 @@ WHERE user_id = ? AND manga_id = ?
 // GetLibrary fetches the user's library listing
 func (r *Repository) GetLibrary(ctx context.Context, userID int64) ([]domainlibrary.LibraryEntry, error) {
 	query := `
-SELECT ul.manga_id, m.title, m.cover_url, ul.status, ul.current_chapter, ul.created_at, ul.updated_at
+SELECT ul.manga_id,
+       COALESCE(m.title, '') AS title,
+       COALESCE(m.cover_url, '') AS cover_url,
+       COALESCE(ul.status, '') AS status,
+       ul.current_chapter,
+       ul.created_at,
+       ul.updated_at
 FROM user_library ul
 JOIN mangas m ON m.id = ul.manga_id
 WHERE ul.user_id = ?
