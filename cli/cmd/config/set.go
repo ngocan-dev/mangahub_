@@ -77,6 +77,9 @@ func init() {
 
 func validConfigKeys() map[string]string {
 	return map[string]string{
+		"api.base_url":          "string",
+		"grpc.address":          "string",
+		"tcp.address":           "string",
 		"server.host":           "string",
 		"server.port":           "int",
 		"server.grpc":           "int",
@@ -112,6 +115,12 @@ func convertValue(raw string, expected string) (interface{}, error) {
 
 func applyKey(mgr *config.Manager, key string, val interface{}) error {
 	switch key {
+	case "api.base_url":
+		mgr.Data.BaseURL = val.(string)
+	case "grpc.address":
+		mgr.Data.GRPCAddress = val.(string)
+	case "tcp.address":
+		mgr.Data.TCPAddress = val.(string)
 	case "server.host":
 		mgr.Data.Server.Host = val.(string)
 	case "server.port":
@@ -138,8 +147,9 @@ func applyKey(mgr *config.Manager, key string, val interface{}) error {
 		return fmt.Errorf("✗ Invalid configuration key: %s", key)
 	}
 
-	mgr.Data.BaseURL = fmt.Sprintf("http://%s:%d", mgr.Data.Server.Host, mgr.Data.Server.Port)
-	mgr.Data.GRPCAddress = fmt.Sprintf("%s:%d", mgr.Data.Server.Host, mgr.Data.Server.GRPC)
+	mgr.Data.BaseURL = config.ResolveBaseURL(mgr.Data)
+	mgr.Data.GRPCAddress = config.ResolveGRPCAddress(mgr.Data)
+	mgr.Data.TCPAddress = config.ResolveTCPAddress(mgr.Data)
 
 	return nil
 }

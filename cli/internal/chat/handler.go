@@ -20,17 +20,29 @@ type Session struct {
 	verbose  bool
 	quiet    bool
 	stopChan chan struct{}
+	chatHost string
+	httpBase string
 }
 
 // NewSession initializes a chat session for the provided room.
 func NewSession(room string) *Session {
 	runtime := config.Runtime()
+	cfg := config.ManagerInstance()
+	chatHost := config.ResolveChatHost(config.DefaultConfig(""))
+	httpBase := config.ResolveChatHTTPBase(config.DefaultConfig(""))
+	if cfg != nil {
+		chatHost = config.ResolveChatHost(cfg.Data)
+		httpBase = config.ResolveChatHTTPBase(cfg.Data)
+	}
+
 	return &Session{
-		client:   NewWSClient(room),
+		client:   NewWSClient(room, chatHost),
 		room:     room,
 		verbose:  runtime.Verbose,
 		quiet:    runtime.Quiet,
 		stopChan: make(chan struct{}),
+		chatHost: chatHost,
+		httpBase: httpBase,
 	}
 }
 
@@ -174,7 +186,7 @@ func (s *Session) switchRoom(room string) {
 	fmt.Printf("Switching to #%s…\n", room)
 	s.room = room
 	s.stopChan = make(chan struct{})
-	s.client = NewWSClient(room)
+	s.client = NewWSClient(room, s.chatHost)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -189,7 +201,7 @@ func (s *Session) switchRoom(room string) {
 }
 
 func (s *Session) printHistory() {
-	client := NewHistoryClient(s.verbose)
+	client := NewHistoryClient(s.httpBase, s.verbose)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	history, raw, err := client.Fetch(ctx, s.room, 20)

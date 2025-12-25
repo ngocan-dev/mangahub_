@@ -34,9 +34,12 @@ import (
 )
 
 var (
-	cfgFile string
-	verbose bool
-	quiet   bool
+	cfgFile      string
+	verbose      bool
+	quiet        bool
+	apiOverride  string
+	grpcOverride string
+	tcpOverride  string
 )
 
 // rootCmd represents the base command when called without any subcommands.
@@ -64,13 +67,21 @@ func Execute() {
 func init() {
 	defaultPath, _ := config.DefaultPath()
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", defaultPath, "Custom config path (default: ~/.mangahub/config.json)")
+	rootCmd.PersistentFlags().StringVar(&apiOverride, "server", "", fmt.Sprintf("HTTP API base URL (default: %s)", config.DefaultBaseURL))
+	rootCmd.PersistentFlags().StringVar(&grpcOverride, "grpc", "", fmt.Sprintf("gRPC server address (default: %s)", config.DefaultGRPCAddress))
+	rootCmd.PersistentFlags().StringVar(&tcpOverride, "tcp", "", fmt.Sprintf("TCP server address (default: %s)", config.DefaultTCPAddress))
 	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "Enable verbose logs")
 	rootCmd.PersistentFlags().BoolVar(&quiet, "quiet", false, "Suppress all non-error output")
 	rootCmd.SilenceUsage = true
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		config.SetRuntimeOptions(verbose, quiet)
-		_, err := config.Load(cfgFile)
+		_, err := config.LoadWithOptions(config.LoadOptions{
+			Path:        cfgFile,
+			APIEndpoint: apiOverride,
+			GRPCAddress: grpcOverride,
+			TCPAddress:  tcpOverride,
+		})
 		return err
 	}
 

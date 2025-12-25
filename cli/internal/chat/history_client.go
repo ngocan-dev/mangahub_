@@ -7,12 +7,13 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"encoding/json"
-)
 
-const chatBaseURL = "http://localhost:9093"
+	"github.com/ngocan-dev/mangahub_/cli/internal/config"
+)
 
 // HistoryClient retrieves chat history without opening a WebSocket connection.
 type HistoryClient struct {
@@ -22,9 +23,12 @@ type HistoryClient struct {
 }
 
 // NewHistoryClient returns a HistoryClient configured for the default chat API.
-func NewHistoryClient(verbose bool) *HistoryClient {
+func NewHistoryClient(baseURL string, verbose bool) *HistoryClient {
+	if strings.TrimSpace(baseURL) == "" {
+		baseURL = config.ResolveChatHTTPBase(config.DefaultConfig(""))
+	}
 	return &HistoryClient{
-		BaseURL:    chatBaseURL,
+		BaseURL:    baseURL,
 		HTTPClient: &http.Client{Timeout: 10 * time.Second},
 		Verbose:    verbose,
 	}

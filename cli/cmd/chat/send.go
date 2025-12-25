@@ -3,11 +3,12 @@ package chat
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ngocan-dev/mangahub_/cli/internal/chat"
+	"github.com/ngocan-dev/mangahub_/cli/internal/config"
 	"github.com/spf13/cobra"
-	"strings"
 )
 
 var sendCmd = &cobra.Command{
@@ -25,7 +26,12 @@ var sendCmd = &cobra.Command{
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		client := chat.NewWSClient(mangaID)
+		cfg := config.ManagerInstance()
+		if cfg == nil {
+			return fmt.Errorf("configuration not loaded")
+		}
+
+		client := chat.NewWSClient(mangaID, config.ResolveChatHost(cfg.Data))
 		if err := client.Connect(ctx); err != nil {
 			fmt.Println("✗ Unable to connect to chat server.")
 			fmt.Println("Check if chat server is running: mangahub server status")

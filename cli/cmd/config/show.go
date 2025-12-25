@@ -47,6 +47,9 @@ func printFullConfig(cmd *cobra.Command, cfg config.Config) {
 	cmd.Println("MangaHub Configuration")
 	cmd.Println()
 
+	cmd.Printf("%-20s %v\n", "api.base_url:", cfg.BaseURL)
+	cmd.Printf("%-20s %v\n", "grpc.address:", cfg.GRPCAddress)
+	cmd.Printf("%-20s %v\n", "tcp.address:", cfg.TCPAddress)
 	cmd.Printf("%-20s %v\n", "server.host:", cfg.Server.Host)
 	cmd.Printf("%-20s %v\n", "server.port:", cfg.Server.Port)
 	cmd.Printf("%-20s %v\n", "server.grpc:", cfg.Server.GRPC)
@@ -65,6 +68,14 @@ func printFullConfig(cmd *cobra.Command, cfg config.Config) {
 
 func printSection(cmd *cobra.Command, section string, cfg config.Config) bool {
 	switch section {
+	case "api":
+		cmd.Println("[api]")
+		cmd.Printf("base_url: %s\n", cfg.BaseURL)
+	case "addresses", "endpoints":
+		cmd.Println("[endpoints]")
+		cmd.Printf("api:  %s\n", cfg.BaseURL)
+		cmd.Printf("grpc: %s\n", cfg.GRPCAddress)
+		cmd.Printf("tcp:  %s\n", cfg.TCPAddress)
 	case "server":
 		cmd.Println("[server]")
 		cmd.Printf("host: %s\n", cfg.Server.Host)

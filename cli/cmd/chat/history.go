@@ -20,7 +20,12 @@ var historyCmd = &cobra.Command{
 		limit, _ := cmd.Flags().GetInt("limit")
 
 		runtime := config.Runtime()
-		client := chat.NewHistoryClient(runtime.Verbose)
+		cfg := config.ManagerInstance()
+		if cfg == nil {
+			return fmt.Errorf("configuration not loaded")
+		}
+
+		client := chat.NewHistoryClient(config.ResolveChatHTTPBase(cfg.Data), runtime.Verbose)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
