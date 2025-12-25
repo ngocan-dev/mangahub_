@@ -11,13 +11,15 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/ngocan-dev/mangahub/backend/domain/friend"
 )
 
 // DirectChatHub manages:
 // - presence connections: presence[userID][connID] => *websocket.Conn
 // - direct chat connections: chats[userID][friendID] => *websocket.Conn
 type DirectChatHub struct {
-	db *sql.DB
+	db         *sql.DB
+	friendRepo *friend.Repository
 
 	mu       sync.RWMutex
 	presence map[int64]map[int64]*websocket.Conn
@@ -44,9 +46,10 @@ var upgrader = websocket.Upgrader{
 // NewDirectChatHub constructs a new hub.
 func NewDirectChatHub(db *sql.DB) *DirectChatHub {
 	return &DirectChatHub{
-		db:       db,
-		presence: make(map[int64]map[int64]*websocket.Conn),
-		chats:    make(map[int64]map[int64]*websocket.Conn),
+		db:         db,
+		friendRepo: friend.NewRepository(db),
+		presence:   make(map[int64]map[int64]*websocket.Conn),
+		chats:      make(map[int64]map[int64]*websocket.Conn),
 	}
 }
 
@@ -277,12 +280,10 @@ func (h *DirectChatHub) dispatchMessage(msg DirectMessage) {
 // -----------------------
 
 func (h *DirectChatHub) areFriends(ctx context.Context, userID, friendID int64) bool {
-	var count int
-	if err := h.db.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM friends WHERE user_id = ? AND friend_id = ?
-	`, userID, friendID).Scan(&count); err != nil {
+	ok, err := h.friendRepo.AreFriends(ctx, userID, friendID)
+	if err != nil {
 		log.Printf("[chat] friend check failed user_id=%d friend_id=%d err=%v", userID, friendID, err)
 		return false
 	}
-	return count > 0
+	return ok
 }

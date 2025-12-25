@@ -2,6 +2,7 @@ package friend
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -156,10 +157,10 @@ func (s *Service) AcceptFriendRequest(ctx context.Context, userID int64, accepte
 		return nil, ErrNoPendingRequest
 	}
 
-	if err := s.repo.UpdateFriendRequestStatus(ctx, req.ID, "accepted"); err != nil {
-		return nil, err
-	}
-	if err := s.repo.CreateFriendshipBidirectional(ctx, req.FromUserID, req.ToUserID); err != nil {
+	if err := s.repo.AcceptFriendRequestTx(ctx, req.ID, req.FromUserID, req.ToUserID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNoPendingRequest
+		}
 		return nil, err
 	}
 
@@ -186,7 +187,13 @@ func (s *Service) RejectFriendRequest(ctx context.Context, userID, requestID int
 	if req == nil || req.ToUserID != userID || req.Status != "pending" {
 		return ErrNoPendingRequest
 	}
-	return s.repo.UpdateFriendRequestStatus(ctx, requestID, "blocked")
+	if err := s.repo.UpdateFriendRequestStatus(ctx, requestID, "blocked"); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNoPendingRequest
+		}
+		return err
+	}
+	return nil
 }
 
 // ListFriends returns accepted friends for a user.

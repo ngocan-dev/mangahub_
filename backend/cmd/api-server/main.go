@@ -14,6 +14,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 
 	dbpkg "github.com/ngocan-dev/mangahub/backend/db"
+	"github.com/ngocan-dev/mangahub/backend/domain/chat"
 	"github.com/ngocan-dev/mangahub/backend/domain/friend"
 	"github.com/ngocan-dev/mangahub/backend/domain/user"
 	"github.com/ngocan-dev/mangahub/backend/internal/auth"
@@ -190,9 +191,12 @@ func main() {
 	friendService := friend.NewService(friendRepo, userRepo, nil) // consider a Noop notifier instead of nil
 	friendHandler := handlers.NewFriendHandler(friendService)
 
+	chatRepo := chat.NewRepository(db)
+	chatService := chat.NewService(chatRepo, friendRepo)
 	// WebSocket chat
 	chatHub := ws.NewDirectChatHub(db)
 	chatHandler := handlers.NewChatHandler(chatHub)
+	chatMessageHandler := handlers.NewChatMessageHandler(chatService)
 
 	// UDP notification server
 	udpAddress := cfg.UDP.ServerAddr
@@ -265,6 +269,8 @@ func main() {
 	r.POST("/friends/request", authHandler.RequireAuth, friendHandler.SendRequest)
 	r.POST("/friends/accept", authHandler.RequireAuth, friendHandler.AcceptRequest)
 	r.POST("/friends/reject", authHandler.RequireAuth, friendHandler.RejectRequest)
+	r.POST("/friends/:id/accept", authHandler.RequireAuth, friendHandler.AcceptRequest)
+	r.POST("/friends/:id/reject", authHandler.RequireAuth, friendHandler.RejectRequest)
 
 	// Legacy paths (optional)
 	r.POST("/friends/requests", authHandler.RequireAuth, friendHandler.SendRequest)
@@ -272,6 +278,10 @@ func main() {
 
 	// WebSocket chat
 	r.GET("/ws/chat", authHandler.RequireAuth, chatHandler.Serve)
+	// REST chat
+	r.GET("/chat/conversations", authHandler.RequireAuth, chatMessageHandler.ListConversations)
+	r.GET("/chat/rooms/:roomID/messages", authHandler.RequireAuth, chatMessageHandler.ListMessages)
+	r.POST("/chat/messages", authHandler.RequireAuth, chatMessageHandler.SendMessage)
 
 	// Manga
 	r.GET("/manga/popular", mangaHandler.GetPopularManga)

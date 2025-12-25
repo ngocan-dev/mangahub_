@@ -10,7 +10,7 @@ export interface UserSummary {
   id: number;
   username: string;
   email?: string;
-  avatar?: string;
+  avatar_url?: string;
 }
 
 export interface FriendRequest {
