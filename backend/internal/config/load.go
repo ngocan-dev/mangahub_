@@ -77,6 +77,11 @@ func Load() (*Config, error) {
 	}
 	udpDisabled := isEnvSet("UDP_SERVER_DISABLED")
 
+	allowedOrigins, err := getString("ALLOWED_ORIGINS", "http://localhost:3000", false)
+	if err != nil {
+		return nil, err
+	}
+
 	jwtSecret, err := getString("JWT_SECRET", "mangahub-secret-key-change-in-production", false)
 	if err != nil {
 		return nil, err
@@ -84,12 +89,13 @@ func Load() (*Config, error) {
 
 	cfg := Config{
 		App: AppConfig{
-			RedisURL:      redisURL,
-			RedisAddr:     redisAddr,
-			RedisPassword: redisPassword,
-			RedisDB:       redisDB,
-			TCPServerAddr: tcpAddr,
-			WSServerAddr:  wsAddr,
+			RedisURL:       redisURL,
+			RedisAddr:      redisAddr,
+			RedisPassword:  redisPassword,
+			RedisDB:        redisDB,
+			TCPServerAddr:  tcpAddr,
+			WSServerAddr:   wsAddr,
+			AllowedOrigins: parseCSV(allowedOrigins),
 		},
 		DB: DBConfig{
 			Driver:        dbDriver,
@@ -222,4 +228,19 @@ func getOptionalInt(key string) (int, bool, error) {
 func isEnvSet(key string) bool {
 	val, ok := os.LookupEnv(key)
 	return ok && strings.TrimSpace(val) != ""
+}
+
+func parseCSV(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	results := make([]string, 0, len(parts))
+	for _, part := range parts {
+		p := strings.TrimSpace(part)
+		if p != "" {
+			results = append(results, p)
+		}
+	}
+	return results
 }

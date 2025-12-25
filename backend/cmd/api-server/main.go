@@ -78,6 +78,7 @@ func main() {
 	defer db.Close()
 
 	r := gin.Default()
+	r.Use(middleware.CORSMiddleware(cfg.App.AllowedOrigins))
 
 	userHandler := handlers.NewUserHandler(db)
 	authHandler := handlers.NewAuthHandler(db)

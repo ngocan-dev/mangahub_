@@ -10,12 +10,13 @@ type Config struct {
 }
 
 type AppConfig struct {
-	RedisURL      string
-	RedisAddr     string
-	RedisPassword string
-	RedisDB       int
-	TCPServerAddr string
-	WSServerAddr  string
+	RedisURL       string
+	RedisAddr      string
+	RedisPassword  string
+	RedisDB        int
+	TCPServerAddr  string
+	WSServerAddr   string
+	AllowedOrigins []string
 }
 
 type DBConfig struct {
