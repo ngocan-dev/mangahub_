@@ -1,0 +1,9 @@
+{
+  "name": "@tailwindcss/postcss",
+  "version": "0.0.0-local",
+  "type": "module",
+  "main": "index.js",
+  "peerDependencies": {
+    "tailwindcss": "^3.4.13"
+  }
+}
