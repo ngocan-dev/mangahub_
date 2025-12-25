@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"strings"
 )
 
@@ -268,28 +269,25 @@ func (r *Repository) GetPopularManga(ctx context.Context, limit int) ([]Manga, e
 
 	query := `
 SELECT
-    m.id,
-    m.slug,
-    m.title,
-    m.alt_title,
-    m.author,
-    m.artist,
-    COALESCE(GROUP_CONCAT(DISTINCT t.name), '') AS genres,
-    m.status,
-    m.synopsis,
-    m.cover_url,
-    m.rating_average,
-    m.rating_count
-FROM mangas m
-LEFT JOIN manga_tags mt ON m.id = mt.manga_id
-LEFT JOIN tags t ON mt.tag_id = t.id
-GROUP BY m.id
-ORDER BY m.rating_average DESC, m.rating_count DESC, m.updated_at DESC
+    id,
+    slug,
+    title,
+    alt_title,
+    author,
+    artist,
+    status,
+    synopsis,
+    cover_url,
+    rating_average,
+    rating_count
+FROM mangas
+ORDER BY rating_average DESC, rating_count DESC, updated_at DESC
 LIMIT ?
 `
 
 	rows, err := r.db.QueryContext(ctx, query, limit)
 	if err != nil {
+		log.Printf("repository: GetPopularManga query failed (limit=%d): %v", limit, err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -297,14 +295,13 @@ LIMIT ?
 	var popular []Manga
 	for rows.Next() {
 		var (
-			m      Manga
-			alt    sql.NullString
-			author sql.NullString
-			artist sql.NullString
-			desc   sql.NullString
-			image  sql.NullString
-			genres sql.NullString
-			views  int64
+			m           Manga
+			alt         sql.NullString
+			author      sql.NullString
+			artist      sql.NullString
+			desc        sql.NullString
+			image       sql.NullString
+			ratingCount sql.NullInt64
 		)
 		if err := rows.Scan(
 			&m.ID,
@@ -313,31 +310,31 @@ LIMIT ?
 			&alt,
 			&author,
 			&artist,
-			&genres,
 			&m.Status,
 			&desc,
 			&image,
 			&m.RatingPoint,
-			&views,
+			&ratingCount,
 		); err != nil {
+			log.Printf("repository: GetPopularManga scan failed (id=%d): %v", m.ID, err)
 			return nil, err
 		}
 		m.Name = m.Title
-		m.Views = views
 		m.Author = author.String
 		m.Artist = artist.String
 		m.Description = desc.String
 		m.Image = image.String
+		if ratingCount.Valid {
+			m.Views = ratingCount.Int64
+		}
 		if alt.Valid && m.Slug == "" {
 			m.Slug = alt.String
-		}
-		if genres.Valid {
-			m.Genre = genres.String
 		}
 		popular = append(popular, m)
 	}
 
 	if err := rows.Err(); err != nil {
+		log.Printf("repository: GetPopularManga rows iteration failed: %v", err)
 		return nil, err
 	}
 
