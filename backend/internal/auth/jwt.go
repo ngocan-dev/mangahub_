@@ -102,7 +102,7 @@ func ValidateToken(tokenString string) (*Claims, error) {
 
 	// Validate claims are present and valid
 	// Token claims are properly validated
-	if claims.UserID == 0 {
+	if claims.UserID <= 0 {
 		return nil, ErrInvalidClaims
 	}
 	if claims.Username == "" {

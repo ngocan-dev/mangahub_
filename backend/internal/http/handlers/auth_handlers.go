@@ -91,15 +91,8 @@ func (h *AuthHandler) RequireAuth(c *gin.Context) {
 		return
 	}
 
-	tokenString := ""
 	lowered := strings.ToLower(authHeader)
-	if strings.HasPrefix(lowered, "bearer ") {
-		tokenString = strings.TrimSpace(authHeader[7:])
-	} else {
-		tokenString = authHeader
-	}
-
-	if tokenString == "" {
+	if !strings.HasPrefix(lowered, "bearer ") {
 		// Invalid tokens are rejected
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error":   "invalid authorization header format",
@@ -108,6 +101,7 @@ func (h *AuthHandler) RequireAuth(c *gin.Context) {
 		c.Abort()
 		return
 	}
+	tokenString := strings.TrimSpace(authHeader[len("Bearer "):])
 
 	// Validate token
 	claims, err := auth.ValidateToken(tokenString)
