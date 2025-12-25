@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 import Navbar from "@/components/Navbar";
+import SystemStatusBanner from "@/components/SystemStatusBanner";
 import { AuthProvider } from "@/context/AuthContext";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -19,7 +20,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body className={`${inter.className} bg-slate-950 text-slate-100`}>
         <AuthProvider>
           <Navbar />
-          <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
+          <main className="mx-auto max-w-6xl px-4 py-6">
+            <SystemStatusBanner />
+            {children}
+          </main>
         </AuthProvider>
       </body>
     </html>
