@@ -152,23 +152,38 @@ func RequireUserID(c *gin.Context) (int64, bool) {
 	if !exists {
 		log.Printf("RequireUserID: missing user_id in context")
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+		c.Abort()
 		return 0, false
 	}
 
 	switch v := userIDInterface.(type) {
 	case int64:
+		if v <= 0 {
+			log.Printf("RequireUserID: non-positive user_id %d", v)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user context"})
+			c.Abort()
+			return 0, false
+		}
 		return v, true
 	case string:
 		parsed, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
 			log.Printf("RequireUserID: invalid user_id type string=%q err=%v", v, err)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user context"})
+			c.Abort()
+			return 0, false
+		}
+		if parsed <= 0 {
+			log.Printf("RequireUserID: non-positive user_id string=%q", v)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user context"})
+			c.Abort()
 			return 0, false
 		}
 		return parsed, true
 	default:
 		log.Printf("RequireUserID: unsupported user_id type %T", userIDInterface)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user context"})
+		c.Abort()
 		return 0, false
 	}
 }
