@@ -3,8 +3,13 @@ import { Inter } from "next/font/google";
 import type { ReactNode } from "react";
 import "./globals.css";
 
+<<<<<<< HEAD
 import Navbar from "./components/Navbar";
 import SystemStatusBanner from "./components/SystemStatusBanner"; // Ensure this file exists
+=======
+import Navbar from "../app/components/Navbar";
+import SystemStatusBanner from "../app/components/SystemStatusBanner"; // Ensure this file exists
+>>>>>>> fa2e7ff76b8d703e58914939e7924c308463b3a6
 import { AuthProvider } from "@/context/AuthContext";
 
 

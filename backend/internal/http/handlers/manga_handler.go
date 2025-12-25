@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -335,10 +336,24 @@ func (h *MangaHandler) GetFriendsActivityFeed(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 
+	log.Printf("handler.GetFriendsActivityFeed: user_id=%d page=%d limit=%d", userID, page, limit)
 	resp, err := h.historyService.GetFriendsActivityFeed(c.Request.Context(), userID, page, limit)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		log.Printf("handler.GetFriendsActivityFeed: user_id=%d error=%v", userID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to load friends activity"})
 		return
+	}
+
+	if resp == nil {
+		resp = &history.ActivityFeedResponse{
+			Activities: []history.Activity{},
+			Total:      0,
+			Page:       page,
+			Limit:      limit,
+			Pages:      0,
+		}
+	} else if resp.Activities == nil {
+		resp.Activities = []history.Activity{}
 	}
 
 	c.JSON(http.StatusOK, resp)
@@ -348,37 +363,79 @@ func (h *MangaHandler) GetFriendsActivityFeed(c *gin.Context) {
 func (h *MangaHandler) GetReadingStatistics(c *gin.Context) {
 	userID, ok := RequireUserID(c)
 	if !ok {
+		log.Printf("handler.GetReadingStatistics: missing user_id in context")
 		return
 	}
 
 	force := c.Query("force") == "true"
-	stats, err := h.historyService.GetReadingStatistics(c.Request.Context(), userID, force)
+	log.Printf("handler.GetReadingStatistics: user_id=%d force=%t", userID, force)
+	summary, err := h.historyService.GetReadingSummary(c.Request.Context(), userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		log.Printf("handler.GetReadingStatistics: user_id=%d error=%v", userID, err)
+		status := http.StatusInternalServerError
+		if errors.Is(err, history.ErrDatabaseError) {
+			c.JSON(status, gin.H{"error": "unable to load reading statistics"})
+			return
+		}
+		c.JSON(http.StatusOK, &history.ReadingSummary{})
 		return
 	}
 
-	c.JSON(http.StatusOK, stats)
+	if summary == nil {
+		summary = &history.ReadingSummary{}
+	}
+
+	c.JSON(http.StatusOK, summary)
 }
 
 // GetReadingAnalytics filters reading statistics with query params.
 func (h *MangaHandler) GetReadingAnalytics(c *gin.Context) {
 	userID, ok := RequireUserID(c)
 	if !ok {
+		log.Printf("handler.GetReadingAnalytics: missing user_id in context")
 		return
 	}
 
 	var req history.ReadingAnalyticsRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
+		log.Printf("handler.GetReadingAnalytics: bind error user_id=%d err=%v", userID, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid analytics parameters"})
 		return
 	}
 
-	stats, err := h.historyService.GetReadingAnalytics(c.Request.Context(), userID, req)
+	log.Printf("handler.GetReadingAnalytics: user_id=%d time_period=%s", userID, req.TimePeriod)
+	analytics, err := h.historyService.GetReadingAnalyticsBuckets(c.Request.Context(), userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		log.Printf("handler.GetReadingAnalytics: user_id=%d error=%v", userID, err)
+		if errors.Is(err, history.ErrDatabaseError) {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to load reading analytics"})
+			return
+		}
+		c.JSON(http.StatusOK, &history.ReadingAnalyticsResponse{
+			Daily:   []history.ReadingAnalyticsPoint{},
+			Weekly:  []history.ReadingAnalyticsPoint{},
+			Monthly: []history.ReadingAnalyticsPoint{},
+		})
 		return
 	}
 
-	c.JSON(http.StatusOK, stats)
+	if analytics == nil {
+		analytics = &history.ReadingAnalyticsResponse{
+			Daily:   []history.ReadingAnalyticsPoint{},
+			Weekly:  []history.ReadingAnalyticsPoint{},
+			Monthly: []history.ReadingAnalyticsPoint{},
+		}
+	} else {
+		if analytics.Daily == nil {
+			analytics.Daily = []history.ReadingAnalyticsPoint{}
+		}
+		if analytics.Weekly == nil {
+			analytics.Weekly = []history.ReadingAnalyticsPoint{}
+		}
+		if analytics.Monthly == nil {
+			analytics.Monthly = []history.ReadingAnalyticsPoint{}
+		}
+	}
+
+	c.JSON(http.StatusOK, analytics)
 }

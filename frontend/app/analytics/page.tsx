@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import ProtectedRoute from "@/components/ProtectedRoute";
+import ProtectedRoute from "../components/ProtectedRoute";
 import { analyticsService, type ReadingAnalyticsPoint, type ReadingStatistic } from "@/service/analytics.service"; // Adjusted path
 
 export default function AnalyticsPage() {

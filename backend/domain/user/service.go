@@ -6,9 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/ngocan-dev/mangahub/backend/internal/auth"
 	"github.com/ngocan-dev/mangahub/backend/internal/security"
@@ -20,6 +23,7 @@ var (
 	ErrDuplicateEmail     = errors.New("duplicate email")
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrUserNotFound       = errors.New("user not found")
+	ErrPasswordHashing    = errors.New("password hashing failed")
 )
 
 // A2: invalid email
@@ -59,7 +63,7 @@ func Register(ctx context.Context, db *sql.DB, req RegistrationRequest) (*User, 
 	// SQL injection attempts are blocked (parameterized query)
 	var existing int
 	if err := db.QueryRowContext(ctx,
-		"SELECT COUNT(1) FROM Users WHERE Username = ?",
+		"SELECT COUNT(1) FROM users WHERE username = ?",
 		req.Username,
 	).Scan(&existing); err != nil {
 		return nil, err
@@ -71,7 +75,7 @@ func Register(ctx context.Context, db *sql.DB, req RegistrationRequest) (*User, 
 	// Check duplicate email
 	existing = 0
 	if err := db.QueryRowContext(ctx,
-		"SELECT COUNT(1) FROM Users WHERE Email = ?",
+		"SELECT COUNT(1) FROM users WHERE email = ?",
 		req.Email,
 	).Scan(&existing); err != nil {
 		return nil, err
@@ -83,17 +87,32 @@ func Register(ctx context.Context, db *sql.DB, req RegistrationRequest) (*User, 
 	// Step 3: hash mật khẩu
 	hashed, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %v", ErrPasswordHashing, err)
 	}
 
 	createdAt := time.Now().UTC()
 
 	// Step 4: insert DB
 	res, err := db.ExecContext(ctx, `
-                INSERT INTO Users (Username, Email, PasswordHash, Created_Date)
+                INSERT INTO users (username, email, password_hash, created_at)
                 VALUES (?, ?, ?, ?)
         `, req.Username, req.Email, string(hashed), createdAt)
 	if err != nil {
+		// Normalize SQLite constraint errors to domain-level conflicts
+		var sqliteErr *sqlite.Error
+		if errors.As(err, &sqliteErr) {
+			switch sqliteErr.Code() {
+			case sqlite3.SQLITE_CONSTRAINT, sqlite3.SQLITE_CONSTRAINT_UNIQUE, sqlite3.SQLITE_CONSTRAINT_PRIMARYKEY:
+				msg := strings.ToLower(sqliteErr.Error())
+				switch {
+				case strings.Contains(msg, "users.username"):
+					return nil, ErrDuplicateUsername
+				case strings.Contains(msg, "users.email"):
+					return nil, ErrDuplicateEmail
+				}
+				return nil, ErrDuplicateUsername
+			}
+		}
 		return nil, err
 	}
 
@@ -111,7 +130,7 @@ func Register(ctx context.Context, db *sql.DB, req RegistrationRequest) (*User, 
 
 // Login authenticates a user and returns user info
 // Main Success Scenario:
-// 1. User provides username/email and password
+// 1. User provides email and password
 // 2. System validates credentials against database
 // 3. System generates JWT token with user information
 // 4. System returns token for subsequent requests
@@ -121,16 +140,16 @@ func Login(ctx context.Context, db *sql.DB, req LoginRequest) (*LoginResponse, e
 
 	// Step 1 & 2: Find user by username or email and get password hash
 	// Check if input is email or username
-	isEmail := emailRegex.MatchString(req.UsernameOrEmail)
+	isEmail := emailRegex.MatchString(req.Email)
 
 	var query string
 	if isEmail {
-		query = `SELECT UserId, Username, Email, PasswordHash FROM Users WHERE Email = ?`
+		query = `SELECT id, username, email, password_hash FROM users WHERE email = ?`
 	} else {
-		query = `SELECT UserId, Username, Email, PasswordHash FROM Users WHERE Username = ?`
+		query = `SELECT id, username, email, password_hash FROM users WHERE username = ?`
 	}
 
-	err := db.QueryRowContext(ctx, query, req.UsernameOrEmail).Scan(
+	err := db.QueryRowContext(ctx, query, req.Email).Scan(
 		&userID, &username, &email, &passwordHash,
 	)
 

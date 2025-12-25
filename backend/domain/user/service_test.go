@@ -25,12 +25,13 @@ func setupTestDB(t *testing.T) *sql.DB {
 	})
 
 	schema := `
-CREATE TABLE Users (
-    UserId INTEGER PRIMARY KEY AUTOINCREMENT,
-    Username TEXT NOT NULL UNIQUE,
-    PasswordHash TEXT NOT NULL,
-    Email TEXT NOT NULL UNIQUE,
-    Created_Date DATETIME DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );`
 
 	if _, err := db.Exec(schema); err != nil {
@@ -48,7 +49,7 @@ func createTestUser(t *testing.T, db *sql.DB, username, email, password string) 
 		t.Fatalf("failed to hash password: %v", err)
 	}
 
-	res, err := db.Exec(`INSERT INTO Users (Username, Email, PasswordHash) VALUES (?, ?, ?)`, username, email, string(hashed))
+	res, err := db.Exec(`INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)`, username, email, string(hashed))
 	if err != nil {
 		t.Fatalf("failed to insert user: %v", err)
 	}
@@ -65,7 +66,7 @@ func TestLoginSuccess(t *testing.T) {
 	db := setupTestDB(t)
 	userID := createTestUser(t, db, "reader1", "reader1@example.com", "password123")
 
-	resp, err := Login(context.Background(), db, LoginRequest{UsernameOrEmail: "reader1", Password: "password123"})
+	resp, err := Login(context.Background(), db, LoginRequest{Email: "reader1@example.com", Password: "password123"})
 	if err != nil {
 		t.Fatalf("expected login to succeed, got error: %v", err)
 	}
@@ -96,7 +97,7 @@ func TestLoginInvalidCredentials(t *testing.T) {
 	db := setupTestDB(t)
 	createTestUser(t, db, "reader2", "reader2@example.com", "correct-password")
 
-	_, err := Login(context.Background(), db, LoginRequest{UsernameOrEmail: "reader2", Password: "wrong-password"})
+	_, err := Login(context.Background(), db, LoginRequest{Email: "reader2@example.com", Password: "wrong-password"})
 	if err == nil {
 		t.Fatalf("expected error for invalid credentials")
 	}
@@ -108,7 +109,7 @@ func TestLoginInvalidCredentials(t *testing.T) {
 func TestLoginUserNotFound(t *testing.T) {
 	db := setupTestDB(t)
 
-	_, err := Login(context.Background(), db, LoginRequest{UsernameOrEmail: "missing", Password: "password"})
+	_, err := Login(context.Background(), db, LoginRequest{Email: "missing@example.com", Password: "password"})
 	if err == nil {
 		t.Fatalf("expected error for missing user")
 	}

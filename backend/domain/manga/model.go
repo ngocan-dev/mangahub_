@@ -9,14 +9,17 @@ import (
 // Manga represents a manga/novel entity
 type Manga struct {
 	ID          int64   `json:"id"`
+	Slug        string  `json:"slug"`
 	Name        string  `json:"name"`
 	Title       string  `json:"title"`
 	Author      string  `json:"author"`
+	Artist      string  `json:"artist,omitempty"`
 	Genre       string  `json:"genre"`
 	Status      string  `json:"status"`
 	Description string  `json:"description"`
 	Image       string  `json:"image"`
 	RatingPoint float64 `json:"rating_point"`
+	Views       int64   `json:"views,omitempty"`
 	// RelevanceScore represents the ranking score returned by full-text search.
 	// It is omitted when not performing text search.
 	RelevanceScore float64 `json:"relevance_score,omitempty"`
@@ -52,4 +55,21 @@ type MangaDetail struct {
 	Chapters      []pkgchapter.ChapterSummary `json:"chapters,omitempty"`
 	LibraryStatus *library.LibraryStatus      `json:"library_status,omitempty"`
 	UserProgress  *history.UserProgress       `json:"user_progress,omitempty"`
+}
+
+// CreateMangaRequest captures data required to create a manga record.
+type CreateMangaRequest struct {
+	Title       string
+	AltTitle    string
+	Slug        string
+	CoverURL    string
+	Author      string
+	Artist      string
+	Status      string
+	Synopsis    string
+	Genres      []string
+	Rating      float64
+	Views       int64
+	Language    string
+	LastChapter int
 }

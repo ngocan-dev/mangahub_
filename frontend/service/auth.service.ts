@@ -6,7 +6,7 @@ export interface AuthCredentials {
 }
 
 export interface RegisterPayload extends AuthCredentials {
-  username?: string;
+  username: string;
 }
 
 export interface AuthResponse {

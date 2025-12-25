@@ -2,6 +2,7 @@ package history
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -14,6 +15,7 @@ var (
 	ErrMangaNotFound        = errors.New("manga not found")
 	ErrMangaNotInLibrary    = errors.New("manga not in library")
 	ErrDatabaseError        = errors.New("database error")
+	ErrNoData               = errors.New("no data available")
 )
 
 // ChapterService exposes chapter operations needed by history
@@ -145,19 +147,30 @@ func (s *Service) UpdateProgress(ctx context.Context, userID, mangaID int64, req
 func (s *Service) GetFriendsActivityFeed(ctx context.Context, userID int64, page, limit int) (*ActivityFeedResponse, error) {
 	activities, total, err := s.repo.GetFriendsActivities(ctx, userID, page, limit)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return &ActivityFeedResponse{
+				Activities: []Activity{},
+				Total:      0,
+				Page:       page,
+				Limit:      limit,
+				Pages:      0,
+			}, nil
+		}
 		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
 	}
-	pages := 0
-	if limit > 0 {
-		pages = (total + limit - 1) / limit
-	}
-	return &ActivityFeedResponse{
+	resp := &ActivityFeedResponse{
 		Activities: activities,
 		Total:      total,
 		Page:       page,
 		Limit:      limit,
-		Pages:      pages,
-	}, nil
+	}
+	if len(resp.Activities) == 0 {
+		resp.Activities = []Activity{}
+	}
+	if resp.Limit > 0 {
+		resp.Pages = (resp.Total + resp.Limit - 1) / resp.Limit
+	}
+	return resp, nil
 }
 
 // GetReadingStatistics returns cached/calculated stats
@@ -175,6 +188,12 @@ func (s *Service) GetReadingStatistics(ctx context.Context, userID int64, force 
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
 	}
+	if stats == nil {
+		return nil, ErrNoData
+	}
+	if stats.LastCalculatedAt.IsZero() {
+		stats.LastCalculatedAt = time.Now()
+	}
 
 	if err := s.repo.SaveReadingStatistics(ctx, stats); err != nil {
 		// ignore cache error
@@ -185,6 +204,9 @@ func (s *Service) GetReadingStatistics(ctx context.Context, userID int64, force 
 
 // GetReadingAnalytics filters stats
 func (s *Service) GetReadingAnalytics(ctx context.Context, userID int64, req ReadingAnalyticsRequest) (*ReadingStatistics, error) {
+	if req.TimePeriod == "" {
+		req.TimePeriod = "month"
+	}
 	stats, err := s.GetReadingStatistics(ctx, userID, false)
 	if err != nil {
 		return nil, err
@@ -229,4 +251,42 @@ func (s *Service) GetReadingAnalytics(ctx context.Context, userID int64, req Rea
 	}
 
 	return stats, nil
+}
+
+// GetReadingSummary returns lean reading statistics that are safe for empty users.
+func (s *Service) GetReadingSummary(ctx context.Context, userID int64) (*ReadingSummary, error) {
+	summary, err := s.repo.GetReadingSummary(ctx, userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return &ReadingSummary{}, nil
+		}
+		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
+	}
+	if summary == nil {
+		return &ReadingSummary{}, nil
+	}
+	return summary, nil
+}
+
+// GetReadingAnalyticsBuckets returns grouped analytics and always succeeds with defaults.
+func (s *Service) GetReadingAnalyticsBuckets(ctx context.Context, userID int64) (*ReadingAnalyticsResponse, error) {
+	resp, err := s.repo.GetReadingAnalyticsBuckets(ctx, userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return &ReadingAnalyticsResponse{
+				Daily:   []ReadingAnalyticsPoint{},
+				Weekly:  []ReadingAnalyticsPoint{},
+				Monthly: []ReadingAnalyticsPoint{},
+			}, nil
+		}
+		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
+	}
+	if resp == nil {
+		return &ReadingAnalyticsResponse{
+			Daily:   []ReadingAnalyticsPoint{},
+			Weekly:  []ReadingAnalyticsPoint{},
+			Monthly: []ReadingAnalyticsPoint{},
+		}, nil
+	}
+	return resp, nil
 }

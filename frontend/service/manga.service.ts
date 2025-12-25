@@ -1,76 +1,69 @@
-import { http } from "@/lib/http";
+import {
+  getChaptersByMangaId,
+  getMangaById as fetchMangaById,
+  getPopularManga,
+  getReviewsByMangaId,
+  searchManga as searchMangaApi,
+} from "@/service/api";
+import type { Chapter, Manga, Review } from "@/service/api";
 
-export interface Manga {
-  id: string;
-  title: string;
-  author?: string;
-  description?: string;
-  coverImage?: string;
-  rating?: number;
-  genres?: string[];
-  status?: string;
-}
+const isChapterArray = (data: unknown): data is Chapter[] => Array.isArray(data);
 
-export interface Chapter {
-  id: string;
-  title: string;
-  number?: number;
-  releasedAt?: string;
-}
+const normalizeChapter = (chapter: unknown): Chapter | null => {
+  if (!chapter || typeof chapter !== "object") return null;
+  const raw = chapter as Record<string, unknown>;
 
-export interface Review {
-  id: string;
-  userId?: string;
-  rating: number;
-  comment: string;
-  createdAt?: string;
-}
+  const id = Number(raw.id);
+  const mangaId = Number(raw.manga_id);
+  const chapterNumber = Number(raw.chapter_number);
+  const title = typeof raw.title === "string" ? raw.title : "Untitled";
+  const contentUrl = typeof raw.content_url === "string" ? raw.content_url : "";
 
-export interface ProgressPayload {
-  progress: number;
-  chapterId?: string;
-}
+  if (!Number.isFinite(id) || !Number.isFinite(mangaId)) return null;
 
-export interface ReviewPayload {
-  rating: number;
-  comment: string;
-}
+  return {
+    id,
+    manga_id: mangaId,
+    chapter_number: Number.isFinite(chapterNumber) ? chapterNumber : 0,
+    title,
+    content_url: contentUrl,
+  };
+};
+
+const normalizeChapters = (payload: unknown): Chapter[] => {
+  const candidates = (() => {
+    if (isChapterArray(payload)) return payload;
+    if (payload && typeof payload === "object" && "chapters" in payload) {
+      const rawChapters = (payload as { chapters?: unknown }).chapters;
+      if (isChapterArray(rawChapters)) return rawChapters;
+    }
+    return [] as unknown[];
+  })();
+
+  return candidates
+    .map((chapter) => normalizeChapter(chapter))
+    .filter((chapter): chapter is Chapter => Boolean(chapter));
+};
 
 async function getPopular(): Promise<Manga[]> {
-  const { data } = await http.get<Manga[]>("/manga/popular");
-  return data;
+  return getPopularManga();
 }
 
 async function searchManga(query: string): Promise<Manga[]> {
-  const { data } = await http.get<Manga[]>("/manga/search", { params: { query } });
-  return data;
+  return searchMangaApi(query);
 }
 
-async function getMangaById(id: string): Promise<Manga> {
-  const { data } = await http.get<Manga>(`/manga/${id}`);
-  return data;
+async function getMangaById(id: number): Promise<Manga> {
+  return fetchMangaById(id);
 }
 
-async function getChapters(id: string): Promise<Chapter[]> {
-  const { data } = await http.get<Chapter[]>(`/chapters/${id}`);
-  return data;
+async function getChapters(id: number): Promise<Chapter[]> {
+  const raw = await getChaptersByMangaId(id);
+  return normalizeChapters(raw);
 }
 
-async function addToLibrary(id: string): Promise<void> {
-  await http.post(`/manga/${id}/library`);
-}
-
-async function updateProgress(id: string, payload: ProgressPayload): Promise<void> {
-  await http.put(`/manga/${id}/progress`, payload);
-}
-
-async function addReview(id: string, payload: ReviewPayload): Promise<void> {
-  await http.post(`/manga/${id}/reviews`, payload);
-}
-
-async function getReviews(id: string): Promise<Review[]> {
-  const { data } = await http.get<Review[]>(`/manga/${id}/reviews`);
-  return data;
+async function getReviews(id: number): Promise<Review[]> {
+  return getReviewsByMangaId(id);
 }
 
 export const mangaService = {
@@ -78,8 +71,5 @@ export const mangaService = {
   searchManga,
   getMangaById,
   getChapters,
-  addToLibrary,
-  updateProgress,
-  addReview,
   getReviews,
 };

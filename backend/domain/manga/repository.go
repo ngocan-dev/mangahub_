@@ -3,6 +3,7 @@ package manga
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 )
 
@@ -23,11 +24,11 @@ func (r *Repository) Search(ctx context.Context, req SearchRequest) ([]Manga, in
 		args       []interface{}
 	)
 
-	useFullText := strings.TrimSpace(req.Query) != ""
-	ftsQuery := buildFTSQuery(req.Query)
-
-	if useFullText {
-		args = append(args, ftsQuery)
+	trimmedQuery := strings.TrimSpace(req.Query)
+	if trimmedQuery != "" {
+		like := "%" + trimmedQuery + "%"
+		conditions = append(conditions, "(m.title LIKE ? OR m.synopsis LIKE ? OR m.alt_title LIKE ?)")
+		args = append(args, like, like, like)
 	}
 
 	// --- Filters ---
@@ -37,100 +38,69 @@ func (r *Repository) Search(ctx context.Context, req SearchRequest) ([]Manga, in
 			placeholders[i] = "?"
 			args = append(args, g)
 		}
-		conditions = append(conditions, "n.Genre IN ("+strings.Join(placeholders, ",")+")")
+		conditions = append(conditions, fmt.Sprintf(`
+m.id IN (
+    SELECT mt.manga_id
+    FROM manga_tags mt
+    JOIN tags t2 ON t2.id = mt.tag_id
+    WHERE t2.name IN (%s)
+    GROUP BY mt.manga_id
+    HAVING COUNT(DISTINCT t2.name) = %d
+)`, strings.Join(placeholders, ","), len(req.Genres)))
 	}
 
 	if req.Status != "" {
-		conditions = append(conditions, "n.Status = ?")
+		conditions = append(conditions, "m.status = ?")
 		args = append(args, req.Status)
 	}
 
 	if req.MinRating != nil {
-		conditions = append(conditions, "n.Rating_Point >= ?")
+		conditions = append(conditions, "m.rating_average >= ?")
 		args = append(args, *req.MinRating)
 	}
 	if req.MaxRating != nil {
-		conditions = append(conditions, "n.Rating_Point <= ?")
+		conditions = append(conditions, "m.rating_average <= ?")
 		args = append(args, *req.MaxRating)
 	}
 
-	if req.YearFrom != nil {
-		conditions = append(conditions, "n.Year >= ?")
-		args = append(args, *req.YearFrom)
-	}
-	if req.YearTo != nil {
-		conditions = append(conditions, "n.Year <= ?")
-		args = append(args, *req.YearTo)
-	}
-
-	// --- Base query and relevance ranking ---
 	baseQuery := `
-        SELECT
-            n.Novel_Id,
-            n.Novel_Name,
-            n.Title,
-			n.Author,
-            n.Genre,
-            n.Status,
-            n.Description,
-            n.Image,
-            n.Rating_Point,
-            COALESCE(r.rank, 0) AS relevance
-        FROM Novels n
-    `
-
-	countQuery := "SELECT COUNT(*) FROM Novels n"
-	if useFullText {
-		rankedCTE := `WITH ranked AS (
-        SELECT rowid AS Novel_Id, bm25(NovelSearch, 1.0, 0.75) AS rank
-        FROM NovelSearch
-        WHERE NovelSearch MATCH ?
-    )`
-		baseQuery = rankedCTE + `
-        SELECT
-            n.Novel_Id,
-            n.Novel_Name,
-            n.Title,
-            n.Author,
-            n.Genre,
-            n.Status,
-            n.Description,
-            n.Image,
-            n.Rating_Point,
-            r.rank AS relevance
-        FROM Novels n
-        JOIN ranked r ON n.Novel_Id = r.Novel_Id
-    `
-		countQuery = rankedCTE + `
-        SELECT COUNT(*) FROM Novels n
-        JOIN ranked r ON n.Novel_Id = r.Novel_Id
-    `
-	}
+SELECT
+    m.id,
+    m.slug,
+    m.title,
+    m.alt_title,
+    m.author,
+    m.artist,
+    COALESCE(GROUP_CONCAT(DISTINCT t.name), '') AS genres,
+    m.status,
+    m.synopsis,
+    m.cover_url,
+    m.rating_average,
+    m.rating_count
+FROM mangas m
+LEFT JOIN manga_tags mt ON m.id = mt.manga_id
+LEFT JOIN tags t ON mt.tag_id = t.id
+`
 
 	// --- Build WHERE ---
 	if len(conditions) > 0 {
 		whereClause := " WHERE " + strings.Join(conditions, " AND ")
 		baseQuery += whereClause
-		countQuery += whereClause
 	}
 
-	countArgs := make([]interface{}, len(args))
-	copy(countArgs, args)
+	groupBy := " GROUP BY m.id"
+	baseQuery += groupBy
 
 	// --- Sorting ---
 	switch req.SortBy {
 	case "rating":
-		baseQuery += " ORDER BY n.Rating_Point DESC"
+		baseQuery += " ORDER BY m.rating_average DESC, m.rating_count DESC"
 	case "date_updated":
-		baseQuery += " ORDER BY n.Date_Updated DESC"
+		baseQuery += " ORDER BY m.updated_at DESC"
 	case "relevance":
-		baseQuery += " ORDER BY relevance ASC, n.Rating_Point DESC"
+		baseQuery += " ORDER BY m.rating_count DESC, m.rating_average DESC"
 	default:
-		if useFullText {
-			baseQuery += " ORDER BY relevance ASC, n.Rating_Point DESC"
-		} else {
-			baseQuery += " ORDER BY n.Rating_Point DESC"
-		}
+		baseQuery += " ORDER BY m.rating_average DESC, m.rating_count DESC"
 	}
 
 	// --- Pagination ---
@@ -147,11 +117,16 @@ func (r *Repository) Search(ctx context.Context, req SearchRequest) ([]Manga, in
 	}
 	offset := (page - 1) * limit
 
+	countQuery := "SELECT COUNT(*) FROM (" + baseQuery + ") as counted"
+
+	queryArgs := make([]interface{}, len(args))
+	copy(queryArgs, args)
+
 	baseQuery += " LIMIT ? OFFSET ?"
-	args = append(args, limit, offset)
+	queryArgs = append(queryArgs, limit, offset)
 
 	// --- Execute Search Query ---
-	rows, err := r.db.QueryContext(ctx, baseQuery, args...)
+	rows, err := r.db.QueryContext(ctx, baseQuery, queryArgs...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -159,20 +134,43 @@ func (r *Repository) Search(ctx context.Context, req SearchRequest) ([]Manga, in
 
 	var results []Manga
 	for rows.Next() {
-		var m Manga
+		var (
+			m      Manga
+			alt    sql.NullString
+			author sql.NullString
+			artist sql.NullString
+			desc   sql.NullString
+			image  sql.NullString
+			genres sql.NullString
+			views  int64
+		)
 		if err := rows.Scan(
 			&m.ID,
-			&m.Name,
+			&m.Slug,
 			&m.Title,
-			&m.Author,
-			&m.Genre,
+			&alt,
+			&author,
+			&artist,
+			&genres,
 			&m.Status,
-			&m.Description,
-			&m.Image,
+			&desc,
+			&image,
 			&m.RatingPoint,
-			&m.RelevanceScore,
+			&views,
 		); err != nil {
 			return nil, 0, err
+		}
+		m.Name = m.Title
+		m.Views = views
+		m.Author = author.String
+		m.Artist = artist.String
+		m.Description = desc.String
+		m.Image = image.String
+		if alt.Valid && m.Slug == "" {
+			m.Slug = alt.String
+		}
+		if genres.Valid {
+			m.Genre = genres.String
 		}
 		results = append(results, m)
 	}
@@ -183,46 +181,59 @@ func (r *Repository) Search(ctx context.Context, req SearchRequest) ([]Manga, in
 
 	// --- Count Query ---
 	var total int
-	if err := r.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
+	if err := r.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
 	return results, total, nil
 }
 
-func buildFTSQuery(query string) string {
-	query = strings.TrimSpace(query)
-	if query == "" {
-		return ""
-	}
-
-	parts := strings.Fields(query)
-	for i, part := range parts {
-		parts[i] = part + "*"
-	}
-
-	return strings.Join(parts, " ")
-}
-
 // GetByID retrieves manga details by ID
 func (r *Repository) GetByID(ctx context.Context, mangaID int64) (*Manga, error) {
 	query := `
-        SELECT Novel_Id, Novel_Name, Title, Author, Genre, Status, Description, Image, Rating_Point
-        FROM Novels
-        WHERE Novel_Id = ?
-    `
+SELECT
+    m.id,
+    m.slug,
+    m.title,
+    m.alt_title,
+    m.author,
+    m.artist,
+    COALESCE(GROUP_CONCAT(DISTINCT t.name), '') AS genres,
+    m.status,
+    m.synopsis,
+    m.cover_url,
+    m.rating_average,
+    m.rating_count
+FROM mangas m
+LEFT JOIN manga_tags mt ON m.id = mt.manga_id
+LEFT JOIN tags t ON mt.tag_id = t.id
+WHERE m.id = ?
+GROUP BY m.id
+`
 
-	var m Manga
+	var (
+		m      Manga
+		alt    sql.NullString
+		author sql.NullString
+		artist sql.NullString
+		desc   sql.NullString
+		image  sql.NullString
+		genres sql.NullString
+		views  int64
+	)
 	err := r.db.QueryRowContext(ctx, query, mangaID).Scan(
 		&m.ID,
-		&m.Name,
+		&m.Slug,
 		&m.Title,
-		&m.Author,
-		&m.Genre,
+		&alt,
+		&author,
+		&artist,
+		&genres,
 		&m.Status,
-		&m.Description,
-		&m.Image,
+		&desc,
+		&image,
 		&m.RatingPoint,
+		&views,
 	)
 
 	if err == sql.ErrNoRows {
@@ -230,6 +241,18 @@ func (r *Repository) GetByID(ctx context.Context, mangaID int64) (*Manga, error)
 	}
 	if err != nil {
 		return nil, err
+	}
+	m.Name = m.Title
+	m.Views = views
+	m.Author = author.String
+	m.Artist = artist.String
+	m.Description = desc.String
+	m.Image = image.String
+	if alt.Valid && m.Slug == "" {
+		m.Slug = alt.String
+	}
+	if genres.Valid {
+		m.Genre = genres.String
 	}
 	return &m, nil
 }
@@ -244,11 +267,26 @@ func (r *Repository) GetPopularManga(ctx context.Context, limit int) ([]Manga, e
 	}
 
 	query := `
-        SELECT Novel_Id, Novel_Name, Title, Author, Genre, Status, Description, Image, Rating_Point
-        FROM Novels
-        ORDER BY Rating_Point DESC, Date_Updated DESC
-        LIMIT ?
-    `
+SELECT
+    m.id,
+    m.slug,
+    m.title,
+    m.alt_title,
+    m.author,
+    m.artist,
+    COALESCE(GROUP_CONCAT(DISTINCT t.name), '') AS genres,
+    m.status,
+    m.synopsis,
+    m.cover_url,
+    m.rating_average,
+    m.rating_count
+FROM mangas m
+LEFT JOIN manga_tags mt ON m.id = mt.manga_id
+LEFT JOIN tags t ON mt.tag_id = t.id
+GROUP BY m.id
+ORDER BY m.rating_average DESC, m.rating_count DESC, m.updated_at DESC
+LIMIT ?
+`
 
 	rows, err := r.db.QueryContext(ctx, query, limit)
 	if err != nil {
@@ -258,19 +296,43 @@ func (r *Repository) GetPopularManga(ctx context.Context, limit int) ([]Manga, e
 
 	var popular []Manga
 	for rows.Next() {
-		var m Manga
+		var (
+			m      Manga
+			alt    sql.NullString
+			author sql.NullString
+			artist sql.NullString
+			desc   sql.NullString
+			image  sql.NullString
+			genres sql.NullString
+			views  int64
+		)
 		if err := rows.Scan(
 			&m.ID,
-			&m.Name,
+			&m.Slug,
 			&m.Title,
-			&m.Author,
-			&m.Genre,
+			&alt,
+			&author,
+			&artist,
+			&genres,
 			&m.Status,
-			&m.Description,
-			&m.Image,
+			&desc,
+			&image,
 			&m.RatingPoint,
+			&views,
 		); err != nil {
 			return nil, err
+		}
+		m.Name = m.Title
+		m.Views = views
+		m.Author = author.String
+		m.Artist = artist.String
+		m.Description = desc.String
+		m.Image = image.String
+		if alt.Valid && m.Slug == "" {
+			m.Slug = alt.String
+		}
+		if genres.Valid {
+			m.Genre = genres.String
 		}
 		popular = append(popular, m)
 	}
@@ -280,4 +342,109 @@ func (r *Repository) GetPopularManga(ctx context.Context, limit int) ([]Manga, e
 	}
 
 	return popular, nil
+}
+
+// GetByTitle retrieves a manga by title (case-insensitive)
+func (r *Repository) GetByTitle(ctx context.Context, title string) (*Manga, error) {
+	query := `
+SELECT id, slug, title, alt_title, author, artist, status, synopsis, cover_url, rating_average, rating_count
+FROM mangas
+WHERE LOWER(title) = LOWER(?)
+LIMIT 1
+`
+
+	var (
+		m      Manga
+		alt    sql.NullString
+		author sql.NullString
+		artist sql.NullString
+		desc   sql.NullString
+		image  sql.NullString
+		views  int64
+	)
+	err := r.db.QueryRowContext(ctx, query, title).Scan(
+		&m.ID,
+		&m.Slug,
+		&m.Title,
+		&alt,
+		&author,
+		&artist,
+		&m.Status,
+		&desc,
+		&image,
+		&m.RatingPoint,
+		&views,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	m.Name = m.Title
+	m.Author = author.String
+	m.Artist = artist.String
+	m.Description = desc.String
+	m.Image = image.String
+	m.Views = views
+	if alt.Valid && m.Slug == "" {
+		m.Slug = alt.String
+	}
+	return &m, nil
+}
+
+// Create inserts a manga and its tags, returning the new ID.
+func (r *Repository) Create(ctx context.Context, req CreateMangaRequest) (int64, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	if req.Language == "" {
+		req.Language = "ja"
+	}
+
+	result, err := tx.ExecContext(ctx, `
+INSERT INTO mangas (slug, title, alt_title, cover_url, author, artist, status, synopsis, language, rating_average, rating_count, last_chapter)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`, req.Slug, req.Title, req.AltTitle, req.CoverURL, req.Author, req.Artist, req.Status, req.Synopsis, req.Language, req.Rating, req.Views, req.LastChapter)
+	if err != nil {
+		return 0, err
+	}
+
+	mangaID, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+
+	for _, genre := range req.Genres {
+		genre = strings.TrimSpace(genre)
+		if genre == "" {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO tags (name) VALUES (?) ON CONFLICT(name) DO NOTHING`, genre); err != nil {
+			return 0, err
+		}
+
+		var tagID int64
+		if err := tx.QueryRowContext(ctx, `SELECT id FROM tags WHERE name = ?`, genre).Scan(&tagID); err != nil {
+			return 0, err
+		}
+
+		if _, err := tx.ExecContext(ctx, `INSERT INTO manga_tags (manga_id, tag_id) VALUES (?, ?) ON CONFLICT(manga_id, tag_id) DO NOTHING`, mangaID, tagID); err != nil {
+			return 0, err
+		}
+	}
+
+	if req.LastChapter > 0 {
+		if _, err := tx.ExecContext(ctx, `UPDATE mangas SET last_chapter = ?, last_chapter_at = CURRENT_TIMESTAMP WHERE id = ?`, req.LastChapter, mangaID); err != nil {
+			return 0, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return mangaID, nil
 }

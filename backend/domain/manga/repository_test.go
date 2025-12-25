@@ -17,28 +17,31 @@ func setupTestDB(t *testing.T) *sql.DB {
 	}
 
 	schema := `
-    CREATE TABLE Novels (
-        Novel_Id INTEGER PRIMARY KEY AUTOINCREMENT,
-        Novel_Name TEXT NOT NULL,
-        Title TEXT,
-        Author TEXT,
-        Genre TEXT,
-        Status TEXT,
-        Description TEXT,
-        Image TEXT,
-        Rating_Point REAL,
-        Date_Updated DATETIME
+    CREATE TABLE mangas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        slug TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        alt_title TEXT,
+        cover_url TEXT,
+        author TEXT,
+        artist TEXT,
+        status TEXT NOT NULL DEFAULT 'ongoing',
+        synopsis TEXT,
+        language TEXT DEFAULT 'ja',
+        rating_average REAL NOT NULL DEFAULT 0,
+        rating_count INTEGER NOT NULL DEFAULT 0,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
-    CREATE VIRTUAL TABLE NovelSearch USING fts5(
-        Novel_Name,
-        Title,
-        Author,
-        Genre,
-        Status,
-        Description,
-        content='Novels',
-        content_rowid='Novel_Id'
+    CREATE TABLE tags (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE
+    );
+
+    CREATE TABLE manga_tags (
+        manga_id INTEGER NOT NULL,
+        tag_id INTEGER NOT NULL,
+        PRIMARY KEY (manga_id, tag_id)
     );
     `
 
@@ -54,32 +57,47 @@ func seedNovels(t *testing.T, db *sql.DB) {
 	t.Helper()
 
 	inserts := []struct {
-		name        string
+		slug        string
 		title       string
 		author      string
-		genre       string
+		genres      []string
 		status      string
 		description string
 		image       string
 		rating      float64
+		views       int
 	}{
-		{"Hero Saga", "Hero Saga", "AuthorA", "Action", "Ongoing", "Epic hero journey", "hero.jpg", 4.5},
-		{"Mystery Tales", "Mystery Tales", "AuthorB", "Mystery", "Completed", "Mysterious cases", "mystery.jpg", 4.8},
-		{"Action Hero", "Action Hero", "AuthorC", "Action", "Ongoing", "Another hero story", "action.jpg", 3.2},
+		{"hero-saga", "Hero Saga", "AuthorA", []string{"Action", "Fantasy"}, "ongoing", "Epic hero journey", "hero.jpg", 4.5, 1000},
+		{"mystery-tales", "Mystery Tales", "AuthorB", []string{"Mystery", "Thriller"}, "completed", "Mysterious cases", "mystery.jpg", 4.8, 5000},
+		{"action-hero", "Action Hero", "AuthorC", []string{"Action"}, "ongoing", "Another hero story", "action.jpg", 3.2, 200},
 	}
 
 	for _, novel := range inserts {
-		_, err := db.Exec(`
-            INSERT INTO Novels (Novel_Name, Title, Author, Genre, Status, Description, Image, Rating_Point)
+		res, err := db.Exec(`
+            INSERT INTO mangas (slug, title, author, status, synopsis, cover_url, rating_average, rating_count)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `, novel.name, novel.title, novel.author, novel.genre, novel.status, novel.description, novel.image, novel.rating)
+        `, novel.slug, novel.title, novel.author, novel.status, novel.description, novel.image, novel.rating, novel.views)
 		if err != nil {
-			t.Fatalf("failed to insert novel %s: %v", novel.name, err)
+			t.Fatalf("failed to insert novel %s: %v", novel.title, err)
 		}
-	}
 
-	if _, err := db.Exec(`INSERT INTO NovelSearch(NovelSearch) VALUES('rebuild')`); err != nil {
-		t.Fatalf("failed to sync FTS index: %v", err)
+		id, err := res.LastInsertId()
+		if err != nil {
+			t.Fatalf("failed to get inserted id: %v", err)
+		}
+
+		for _, genre := range novel.genres {
+			if _, err := db.Exec(`INSERT INTO tags (name) VALUES (?) ON CONFLICT(name) DO NOTHING`, genre); err != nil {
+				t.Fatalf("failed to insert tag: %v", err)
+			}
+			var tagID int64
+			if err := db.QueryRow(`SELECT id FROM tags WHERE name = ?`, genre).Scan(&tagID); err != nil {
+				t.Fatalf("failed to fetch tag id: %v", err)
+			}
+			if _, err := db.Exec(`INSERT INTO manga_tags (manga_id, tag_id) VALUES (?, ?)`, id, tagID); err != nil {
+				t.Fatalf("failed to link tag: %v", err)
+			}
+		}
 	}
 }
 
@@ -94,7 +112,7 @@ func TestRepositorySearch_FiltersAndPagination(t *testing.T) {
 	resp, total, err := repo.Search(ctx, SearchRequest{
 		Query:  "Hero",
 		Genres: []string{"Action"},
-		Status: "Ongoing",
+		Status: "ongoing",
 		Page:   1,
 		Limit:  1,
 		SortBy: "rating",
@@ -111,14 +129,14 @@ func TestRepositorySearch_FiltersAndPagination(t *testing.T) {
 		t.Fatalf("expected 1 result on first page, got %d", len(resp))
 	}
 
-	if resp[0].Name != "Hero Saga" {
-		t.Fatalf("expected highest rated hero manga first, got %s", resp[0].Name)
+	if resp[0].Title != "Hero Saga" {
+		t.Fatalf("expected highest rated hero manga first, got %s", resp[0].Title)
 	}
 
 	respPage2, _, err := repo.Search(ctx, SearchRequest{
 		Query:  "Hero",
 		Genres: []string{"Action"},
-		Status: "Ongoing",
+		Status: "ongoing",
 		Page:   2,
 		Limit:  1,
 		SortBy: "rating",
@@ -131,8 +149,8 @@ func TestRepositorySearch_FiltersAndPagination(t *testing.T) {
 		t.Fatalf("expected 1 result on second page, got %d", len(respPage2))
 	}
 
-	if respPage2[0].Name != "Action Hero" {
-		t.Fatalf("expected second hero manga on page 2, got %s", respPage2[0].Name)
+	if respPage2[0].Title != "Action Hero" {
+		t.Fatalf("expected second hero manga on page 2, got %s", respPage2[0].Title)
 	}
 }
 

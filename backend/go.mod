@@ -4,6 +4,7 @@ go 1.25.1
 
 require (
 	github.com/gin-gonic/gin v1.11.0
+	github.com/go-sql-driver/mysql v1.8.1
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/microsoft/go-mssqldb v1.9.4
@@ -14,7 +15,11 @@ require (
 	modernc.org/sqlite v1.40.1
 )
 
+<<<<<<< HEAD
 require github.com/gin-contrib/cors v1.7.6 // indirect
+=======
+require filippo.io/edwards25519 v1.1.0 // indirect
+>>>>>>> fa2e7ff76b8d703e58914939e7924c308463b3a6
 
 require (
 	github.com/bytedance/gopkg v0.1.3 // indirect

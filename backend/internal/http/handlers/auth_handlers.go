@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -21,7 +22,7 @@ func NewAuthHandler(db *sql.DB) *AuthHandler {
 
 // Login handles user login
 // Main Success Scenario:
-// 1. User provides username/email and password
+// 1. User provides email and password
 // 2. System validates credentials against database
 // 3. System generates JWT token with user information
 // 4. System returns token for subsequent requests
@@ -29,8 +30,9 @@ func NewAuthHandler(db *sql.DB) *AuthHandler {
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req user.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("login: invalid request body: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "username_or_email and password are required",
+			"error": "email and password are required",
 		})
 		return
 	}
@@ -40,6 +42,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	if err != nil {
 		// A1: Invalid credentials
 		if errors.Is(err, user.ErrInvalidCredentials) {
+			log.Printf("login: invalid credentials for email=%s", req.Email)
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"error": "invalid credentials",
 			})
@@ -48,6 +51,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 		// A2: Account not found - System suggests registration
 		if errors.Is(err, user.ErrUserNotFound) {
+			log.Printf("login: user not found for email=%s", req.Email)
 			c.JSON(http.StatusNotFound, gin.H{
 				"error":   "account not found",
 				"message": "please register to create an account",
@@ -56,6 +60,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		}
 
 		// Other errors
+		log.Printf("login: internal error for email=%s: %v", req.Email, err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "internal server error",
 		})
