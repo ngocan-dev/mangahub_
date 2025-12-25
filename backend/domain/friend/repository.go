@@ -407,7 +407,7 @@ func (r *Repository) detectFriendIDColumn(ctx context.Context) error {
 			return err
 		}
 
-		altColumn := "friend_user_id"
+		altColumn := "friend_id"
 		altQuery := fmt.Sprintf(`SELECT %s FROM friends LIMIT 0`, altColumn)
 		if _, altErr := r.db.ExecContext(ctx, altQuery); altErr != nil {
 			if r.isUnknownColumnError(altErr, altColumn) {
