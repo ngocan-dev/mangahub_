@@ -4,12 +4,16 @@ import { useEffect, useState } from "react";
 
 import MangaCard from "../components/MangaCard"; // Adjust the path as necessary
 import ProtectedRoute from "../components/ProtectedRoute"; // Adjusted path
-import { mangaService, type Manga } from "@/services/manga.service";
+import { mangaService } from "@/services/manga.service";
+import type { Manga } from "@/service/api";
 
-const getStoredLibraryIds = (): string[] => {
+const getStoredLibraryIds = (): number[] => {
   if (typeof window === "undefined") return [];
   try {
-    return JSON.parse(localStorage.getItem("libraryIds") ?? "[]") as string[];
+    const raw = JSON.parse(localStorage.getItem("libraryIds") ?? "[]") as (string | number)[];
+    return raw
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value > 0);
   } catch {
     return [];
   }

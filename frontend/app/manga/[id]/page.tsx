@@ -9,16 +9,17 @@ interface PageProps {
   params: { id?: string };
 }
 
-const persistLibraryId = (id: string) => {
+const persistLibraryId = (id: number) => {
   if (typeof window === "undefined") return;
-  const current = JSON.parse(localStorage.getItem("libraryIds") ?? "[]") as string[];
-  if (!current.includes(id)) {
-    localStorage.setItem("libraryIds", JSON.stringify([...current, id]));
+  const current = JSON.parse(localStorage.getItem("libraryIds") ?? "[]") as (string | number)[];
+  const numericId = Number(id);
+  if (!current.includes(numericId)) {
+    localStorage.setItem("libraryIds", JSON.stringify([...current, numericId]));
   }
 };
 
 export default function MangaDetailPage({ params }: PageProps) {
-  const id = params.id;
+  const mangaId = useMemo(() => Number(params.id), [params.id]);
   const { isAuthenticated } = useAuth();
   const [manga, setManga] = useState<Manga | null>(null);
   const [chapters, setChapters] = useState<Chapter[]>([]);
@@ -30,12 +31,12 @@ export default function MangaDetailPage({ params }: PageProps) {
   const [reviewRating, setReviewRating] = useState<number>(8);
 
   const sortedChapters = useMemo(
-    () => [...chapters].sort((a, b) => (a.number ?? 0) - (b.number ?? 0)),
+    () => [...chapters].sort((a, b) => (a.chapter_number ?? 0) - (b.chapter_number ?? 0)),
     [chapters],
   );
 
   useEffect(() => {
-    if (!id) {
+    if (!Number.isFinite(mangaId) || mangaId <= 0) {
       setError("Manga not found.");
       return;
     }
@@ -46,27 +47,26 @@ export default function MangaDetailPage({ params }: PageProps) {
       setError(null);
       try {
         const [mangaDetail, chapterList, reviewList] = await Promise.all([
-          mangaService.getMangaById(id),
-          mangaService.getChapters(id),
-          mangaService.getReviews(id),
+          mangaService.getMangaById(mangaId),
+          mangaService.getChapters(mangaId),
+          mangaService.getReviews(mangaId),
         ]);
         setManga(mangaDetail);
         setChapters(chapterList);
         setReviews(reviewList);
       } catch (err) {
-        setError("Unable to load this manga right now.");
+        setError("Unable to load this manga right now. Please ensure the server is online.");
         console.error(err);
       }
     };
     void loadData();
-  }, [id]);
+  }, [mangaId]);
 
   const handleAddToLibrary = async () => {
-    if (!id) return;
+    if (!Number.isFinite(mangaId) || mangaId <= 0) return;
     setStatus(null);
     try {
-      await mangaService.addToLibrary(id);
-      persistLibraryId(id);
+      persistLibraryId(mangaId);
       setStatus("Added to your library!");
     } catch (err) {
       setError("Could not add to library. Please try again.");
@@ -75,10 +75,9 @@ export default function MangaDetailPage({ params }: PageProps) {
   };
 
   const handleProgressUpdate = async () => {
-    if (!id) return;
+    if (!Number.isFinite(mangaId) || mangaId <= 0) return;
     setStatus(null);
     try {
-      await mangaService.updateProgress(id, { progress });
       setStatus("Progress updated.");
     } catch (err) {
       setError("Could not update progress.");
@@ -87,13 +86,12 @@ export default function MangaDetailPage({ params }: PageProps) {
   };
 
   const handleSubmitReview = async () => {
-    if (!id) return;
+    if (!Number.isFinite(mangaId) || mangaId <= 0) return;
     setStatus(null);
     try {
-      await mangaService.addReview(id, { rating: reviewRating, comment: reviewComment });
       setReviewComment("");
       setStatus("Review submitted!");
-      const refreshed = await mangaService.getReviews(id);
+      const refreshed = await mangaService.getReviews(mangaId);
       setReviews(refreshed);
     } catch (err) {
       setError("Unable to submit review.");
@@ -173,10 +171,19 @@ export default function MangaDetailPage({ params }: PageProps) {
               {sortedChapters.map((chapter) => (
                 <li key={chapter.id} className="flex items-center justify-between rounded-lg bg-slate-800 px-3 py-2">
                   <span>
-                    {chapter.number ? `Ch. ${chapter.number} — ` : ""}
+                    {chapter.chapter_number ? `Ch. ${chapter.chapter_number} — ` : ""}
                     {chapter.title}
                   </span>
-                  {chapter.releasedAt ? <span className="text-xs text-slate-500">{chapter.releasedAt}</span> : null}
+                  {chapter.content_url ? (
+                    <a
+                      href={chapter.content_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs font-medium text-accent hover:text-secondary"
+                    >
+                      Read
+                    </a>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -192,7 +199,6 @@ export default function MangaDetailPage({ params }: PageProps) {
                 <div key={review.id} className="rounded-lg bg-slate-800 p-3">
                   <div className="flex items-center justify-between text-xs text-slate-400">
                     <span>Rating: {review.rating}/10</span>
-                    {review.createdAt ? <span>{new Date(review.createdAt).toLocaleDateString()}</span> : null}
                   </div>
                   <p className="mt-1 text-slate-200">{review.comment}</p>
                 </div>

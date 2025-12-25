@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import MangaCard from "../components/MangaCard";
-import { mangaService, type Manga } from "@/services/manga.service";
+import { getPopularManga, searchManga, type Manga } from "@/service/api";
 
 export default function MangaListPage() {
   const [manga, setManga] = useState<Manga[]>([]);
@@ -15,10 +15,10 @@ export default function MangaListPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await mangaService.getPopular();
+      const data = await getPopularManga();
       setManga(data);
     } catch (err) {
-      setError("Unable to load popular manga right now.");
+      setError("Unable to load popular manga right now. Please check your connection to the server.");
       console.error(err);
     } finally {
       setLoading(false);
@@ -30,7 +30,7 @@ export default function MangaListPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await mangaService.searchManga(query);
+      const data = await searchManga(query);
       setManga(data);
     } catch (err) {
       setError("Search failed. Please try again.");

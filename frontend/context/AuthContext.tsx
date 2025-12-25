@@ -2,10 +2,11 @@
 
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
-import { authService, type AuthCredentials, type AuthResponse, type RegisterPayload } from "@/service/auth.service";
+import type { AuthResponse } from "@/service/api";
+import { login as apiLogin, register as apiRegister } from "@/service/api";
 
 export interface AuthUser {
-  id?: string;
+  id?: number;
   email: string;
   username?: string;
 }
@@ -15,8 +16,8 @@ interface AuthContextValue {
   token: string | null;
   loading: boolean;
   isAuthenticated: boolean;
-  login: (credentials: AuthCredentials) => Promise<void>;
-  register: (payload: RegisterPayload) => Promise<void>;
+  login: (credentials: { email: string; password: string }) => Promise<void>;
+  register: (payload: { username: string; email: string; password: string }) => Promise<void>;
   logout: () => void;
 }
 
@@ -75,10 +76,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [logout]);
 
   const login = useCallback(
-    async (credentials: AuthCredentials) => {
+    async (credentials: { email: string; password: string }) => {
       setLoading(true);
       try {
-        const data = await authService.login(credentials);
+        const data = await apiLogin(credentials.email, credentials.password);
         handleAuthSuccess(data, credentials.email);
       } finally {
         setLoading(false);
@@ -88,10 +89,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const register = useCallback(
-    async (payload: RegisterPayload) => {
+    async (payload: { username: string; email: string; password: string }) => {
       setLoading(true);
       try {
-        const data = await authService.register(payload);
+        const data = await apiRegister(payload.username, payload.email, payload.password);
         handleAuthSuccess(data, payload.email);
       } finally {
         setLoading(false);
