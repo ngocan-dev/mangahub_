@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 
 	pkgchapter "github.com/ngocan-dev/mangahub/backend/pkg/models"
 )
@@ -270,4 +271,45 @@ func (s *Service) GetDetails(ctx context.Context, mangaID int64, userID *int64) 
 	}
 
 	return detail, nil
+}
+
+// GetByTitle retrieves a manga by its title.
+func (s *Service) GetByTitle(ctx context.Context, title string) (*Manga, error) {
+	if strings.TrimSpace(title) == "" {
+		return nil, nil
+	}
+	m, err := s.repo.GetByTitle(ctx, title)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
+	}
+	return m, nil
+}
+
+// CreateManga inserts a manga and returns its ID.
+func (s *Service) CreateManga(ctx context.Context, req CreateMangaRequest) (int64, error) {
+	if !s.IsDBHealthy() {
+		return 0, ErrDatabaseUnavailable
+	}
+	if strings.TrimSpace(req.Title) == "" || strings.TrimSpace(req.Slug) == "" {
+		return 0, fmt.Errorf("%w: missing title or slug", ErrDatabaseError)
+	}
+
+	existing, err := s.repo.GetByTitle(ctx, req.Title)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %v", ErrDatabaseError, err)
+	}
+	if existing != nil {
+		return existing.ID, nil
+	}
+
+	id, err := s.repo.Create(ctx, req)
+	if err != nil {
+		return 0, fmt.Errorf("%w: %v", ErrDatabaseError, err)
+	}
+
+	if s.cache != nil {
+		_ = s.cache.InvalidateMangaDetail(ctx, id)
+	}
+
+	return id, nil
 }

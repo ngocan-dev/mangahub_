@@ -41,3 +41,8 @@ func (s *Service) ValidateChapter(ctx context.Context, mangaID int64, chapterNum
 func (s *Service) GetChapterCount(ctx context.Context, mangaID int64) (int, error) {
 	return s.repo.GetChapterCount(ctx, mangaID)
 }
+
+// CreateChapter persists a chapter row.
+func (s *Service) CreateChapter(ctx context.Context, mangaID int64, number int, title, contentURL, language string) (int64, error) {
+	return s.repo.CreateChapter(ctx, mangaID, number, title, contentURL, language)
+}

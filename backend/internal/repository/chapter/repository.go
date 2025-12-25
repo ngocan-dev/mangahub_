@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	pkgchapter "github.com/ngocan-dev/mangahub/backend/pkg/models"
 )
@@ -31,10 +32,10 @@ func (r *Repository) GetChapters(ctx context.Context, mangaID int64, limit, offs
 	}
 
 	rows, err := r.db.QueryContext(ctx, `
-        SELECT Chapter_Id, Novel_Id, Chapter_Number, Chapter_Title, Date_Updated
-        FROM Chapters
-        WHERE Novel_Id = ?
-        ORDER BY Chapter_Number ASC
+        SELECT id, manga_id, number, title, updated_at
+        FROM chapters
+        WHERE manga_id = ?
+        ORDER BY number ASC
         LIMIT ? OFFSET ?
     `, mangaID, limit, offset)
 	if err != nil {
@@ -78,9 +79,9 @@ func (r *Repository) GetChapter(ctx context.Context, mangaID int64, chapterNumbe
 		updatedAt sql.NullTime
 	)
 	err := r.db.QueryRowContext(ctx, `
-        SELECT Chapter_Id, Novel_Id, Chapter_Number, Chapter_Title, Content, Date_Updated
-        FROM Chapters
-        WHERE Novel_Id = ? AND Chapter_Number = ?
+        SELECT id, manga_id, number, title, content_url, updated_at
+        FROM chapters
+        WHERE manga_id = ? AND number = ?
         LIMIT 1
     `, mangaID, chapterNumber).Scan(&chapter.ID, &chapter.MangaID, &chapter.Number, &title, &content, &updatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -111,9 +112,9 @@ func (r *Repository) GetChapterByID(ctx context.Context, chapterID int64) (*pkgc
 		updatedAt sql.NullTime
 	)
 	err := r.db.QueryRowContext(ctx, `
-        SELECT Chapter_Id, Novel_Id, Chapter_Number, Chapter_Title, Content, Date_Updated
-        FROM Chapters
-        WHERE Chapter_Id = ?
+        SELECT id, manga_id, number, title, content_url, updated_at
+        FROM chapters
+        WHERE id = ?
         LIMIT 1
     `, chapterID).Scan(&chapter.ID, &chapter.MangaID, &chapter.Number, &title, &content, &updatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -143,9 +144,9 @@ func (r *Repository) ValidateChapter(ctx context.Context, mangaID int64, chapter
 		updatedAt sql.NullTime
 	)
 	err := r.db.QueryRowContext(ctx, `
-        SELECT Chapter_Id, Novel_Id, Chapter_Number, Chapter_Title, Date_Updated
-        FROM Chapters
-        WHERE Novel_Id = ? AND Chapter_Number = ?
+        SELECT id, manga_id, number, title, updated_at
+        FROM chapters
+        WHERE manga_id = ? AND number = ?
         LIMIT 1
     `, mangaID, chapterNumber).Scan(&summary.ID, &summary.MangaID, &summary.Number, &title, &updatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -165,8 +166,40 @@ func (r *Repository) ValidateChapter(ctx context.Context, mangaID int64, chapter
 // GetChapterCount returns the number of chapters available for a manga.
 func (r *Repository) GetChapterCount(ctx context.Context, mangaID int64) (int, error) {
 	var count int
-	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM Chapters WHERE Novel_Id = ?`, mangaID).Scan(&count); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM chapters WHERE manga_id = ?`, mangaID).Scan(&count); err != nil {
 		return 0, err
 	}
 	return count, nil
+}
+
+// CreateChapter inserts a chapter and updates manga metadata.
+func (r *Repository) CreateChapter(ctx context.Context, mangaID int64, number int, title string, contentURL string, language string) (int64, error) {
+	if language == "" {
+		language = "ja"
+	}
+
+	now := time.Now()
+	result, err := r.db.ExecContext(ctx, `
+INSERT INTO chapters (manga_id, number, title, language, content_url, updated_at)
+VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT(manga_id, number, language) DO UPDATE SET title=excluded.title, content_url=excluded.content_url, updated_at=excluded.updated_at
+`, mangaID, number, title, language, contentURL, now)
+	if err != nil {
+		return 0, err
+	}
+
+	chapterID, err := result.LastInsertId()
+	if err != nil {
+		return 0, err
+	}
+
+	if _, err := r.db.ExecContext(ctx, `
+UPDATE mangas
+SET last_chapter = ?, last_chapter_at = ?
+WHERE id = ? AND (last_chapter IS NULL OR last_chapter < ?)
+`, number, now, mangaID, number); err != nil {
+		return 0, err
+	}
+
+	return chapterID, nil
 }
