@@ -375,15 +375,9 @@ func (r *Repository) FindFriendshipBetween(ctx context.Context, userID, friendID
 
 func (r *Repository) ensureFriendSchema(ctx context.Context) error {
 	r.friendSchemaOnce.Do(func() {
-		// Detect the friend ID column (friend_id vs friend_user_id)
-		testQuery := fmt.Sprintf(`SELECT %s FROM friends LIMIT 0`, r.friendIDColumn)
-		if _, err := r.db.ExecContext(ctx, testQuery); err != nil {
-			if r.isUnknownColumnError(err, r.friendIDColumn) {
-				r.friendIDColumn = "friend_user_id"
-			} else {
-				r.friendSchemaError = err
-				return
-			}
+		if err := r.detectFriendIDColumn(ctx); err != nil {
+			r.friendSchemaError = err
+			return
 		}
 
 		// Detect optional status column to filter accepted friends
@@ -393,6 +387,29 @@ func (r *Repository) ensureFriendSchema(ctx context.Context) error {
 	})
 
 	return r.friendSchemaError
+}
+
+func (r *Repository) detectFriendIDColumn(ctx context.Context) error {
+	// Detect the friend ID column (friend_id vs friend_user_id)
+	currentQuery := fmt.Sprintf(`SELECT %s FROM friends LIMIT 0`, r.friendIDColumn)
+	if _, err := r.db.ExecContext(ctx, currentQuery); err != nil {
+		if !r.isUnknownColumnError(err, r.friendIDColumn) {
+			return err
+		}
+
+		altColumn := "friend_id"
+		altQuery := fmt.Sprintf(`SELECT %s FROM friends LIMIT 0`, altColumn)
+		if _, altErr := r.db.ExecContext(ctx, altQuery); altErr != nil {
+			if r.isUnknownColumnError(altErr, altColumn) {
+				return fmt.Errorf("friends table is missing expected column %q", altColumn)
+			}
+			return altErr
+		}
+
+		r.friendIDColumn = altColumn
+	}
+
+	return nil
 }
 
 func (r *Repository) isUnknownColumnError(err error, column string) bool {
