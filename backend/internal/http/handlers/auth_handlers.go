@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -79,7 +80,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 // Unauthorized access is prevented
 func (h *AuthHandler) RequireAuth(c *gin.Context) {
 	// Get token from Authorization header
-	authHeader := c.GetHeader("Authorization")
+	authHeader := strings.TrimSpace(c.GetHeader("Authorization"))
 	if authHeader == "" {
 		// Unauthorized access is prevented
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -90,12 +91,11 @@ func (h *AuthHandler) RequireAuth(c *gin.Context) {
 		return
 	}
 
-	// Extract token from "Bearer <token>"
 	tokenString := ""
-	if len(authHeader) > 7 && authHeader[:7] == "Bearer " {
-		tokenString = authHeader[7:]
+	lowered := strings.ToLower(authHeader)
+	if strings.HasPrefix(lowered, "bearer ") {
+		tokenString = strings.TrimSpace(authHeader[7:])
 	} else {
-		// Try to extract without Bearer prefix (for compatibility)
 		tokenString = authHeader
 	}
 
