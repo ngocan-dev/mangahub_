@@ -1,13 +1,13 @@
 package config
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
-
-	"github.com/joho/godotenv"
 )
 
 // Load reads all configuration from environment variables (optionally via .env)
@@ -115,7 +115,7 @@ func Load() (*Config, error) {
 }
 
 func loadDotEnv() error {
-	err := godotenv.Load()
+	err := loadEnvFiles()
 	if err == nil {
 		return nil
 	}
@@ -125,6 +125,59 @@ func loadDotEnv() error {
 	}
 
 	return fmt.Errorf("load .env: %w", err)
+}
+
+func loadEnvFiles(filenames ...string) error {
+	if len(filenames) == 0 {
+		filenames = []string{".env"}
+	}
+
+	for _, name := range filenames {
+		if err := loadEnvFile(name); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func loadEnvFile(name string) error {
+	path := name
+	if !filepath.IsAbs(name) {
+		if cwd, err := os.Getwd(); err == nil {
+			path = filepath.Join(cwd, name)
+		}
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		key, val, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+
+		key = strings.TrimSpace(key)
+		val = strings.TrimSpace(val)
+
+		if _, exists := os.LookupEnv(key); !exists {
+			if err := os.Setenv(key, strings.Trim(val, `"'`)); err != nil {
+				return fmt.Errorf("set env %s: %w", key, err)
+			}
+		}
+	}
+
+	return scanner.Err()
 }
 
 func getString(key, defaultValue string, required bool) (string, error) {
