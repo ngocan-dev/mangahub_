@@ -3,6 +3,7 @@ package comment
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -144,6 +145,9 @@ func (r *Repository) GetReviews(ctx context.Context, mangaID int64, page, limit 
         SELECT COUNT(*) FROM Reviews WHERE Novel_Id = ?
     `, mangaID).Scan(&total)
 	if err != nil {
+		if isNoDataError(err) {
+			return []Review{}, 0, nil
+		}
 		return nil, 0, err
 	}
 
@@ -239,10 +243,23 @@ func (r *Repository) GetReviewStats(ctx context.Context, mangaID int64) (*Review
 		&stats.AverageRating,
 	)
 	if err != nil {
+		if isNoDataError(err) {
+			return &ReviewStats{}, nil
+		}
 		return nil, err
 	}
 	stats.AverageRating = float64(int(stats.AverageRating*100+0.5)) / 100
 	return &stats, nil
+}
+
+func isNoDataError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "no such table")
 }
 
 // UpdateReview applies provided field changes on a review
