@@ -4,10 +4,12 @@ import (
 	"database/sql"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	chapterrepository "github.com/ngocan-dev/mangahub/backend/internal/repository/chapter"
 	chapterservice "github.com/ngocan-dev/mangahub/backend/internal/service/chapter"
+	pkgchapter "github.com/ngocan-dev/mangahub/backend/pkg/models"
 )
 
 // ChapterHandler handles chapter-specific endpoints.
@@ -39,5 +41,32 @@ func (h *ChapterHandler) GetChapter(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, chapter)
+	resp := mapChapterResponse(chapter)
+
+	c.JSON(http.StatusOK, resp)
+}
+
+type chapterResponse struct {
+	ID            int64  `json:"id"`
+	MangaID       int64  `json:"manga_id"`
+	ChapterNumber int    `json:"chapter_number"`
+	Title         string `json:"title"`
+	ContentText   string `json:"content_text"`
+	CreatedAt     string `json:"created_at"`
+}
+
+func mapChapterResponse(ch *pkgchapter.Chapter) chapterResponse {
+	createdAt := ""
+	if ch.CreatedAt != nil {
+		createdAt = ch.CreatedAt.UTC().Format(time.RFC3339)
+	}
+
+	return chapterResponse{
+		ID:            ch.ID,
+		MangaID:       ch.MangaID,
+		ChapterNumber: ch.Number,
+		Title:         ch.Title,
+		ContentText:   ch.ContentText,
+		CreatedAt:     createdAt,
+	}
 }

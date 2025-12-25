@@ -32,10 +32,10 @@ type MangaSeed struct {
 }
 
 type ChapterSeed struct {
-	Number     int
-	Title      string
-	ContentURL string
-	Language   string
+	Number      int
+	Title       string
+	ContentText string
+	Language    string
 }
 
 func main() {
@@ -96,7 +96,7 @@ func main() {
 		log.Printf("created manga [%d]: %s", mangaID, seed.Title)
 
 		for _, ch := range chapterSeeds {
-			if _, err := chapterSvc.CreateChapter(ctx, mangaID, ch.Number, ch.Title, ch.ContentURL, ch.Language); err != nil {
+			if _, err := chapterSvc.CreateChapter(ctx, mangaID, ch.Number, ch.Title, ch.ContentText, ch.Language); err != nil {
 				log.Printf("failed to create chapter %d for %s: %v", ch.Number, seed.Title, err)
 				continue
 			}
@@ -151,10 +151,10 @@ func generateChapters(seed MangaSeed) []ChapterSeed {
 
 	for i := 1; i <= total; i++ {
 		chapters = append(chapters, ChapterSeed{
-			Number:     i,
-			Title:      fmt.Sprintf("Chapter %d: %s", i, randomChapterTitle()),
-			ContentURL: fmt.Sprintf("https://cdn.mangahub.fake/content/%s/%d", seed.Slug, i),
-			Language:   "ja",
+			Number:      i,
+			Title:       fmt.Sprintf("Chapter %d: %s", i, randomChapterTitle()),
+			ContentText: fmt.Sprintf("Chapter %d content for %s.\n\nThis is placeholder demo text generated during import.", i, seed.Title),
+			Language:    "ja",
 		})
 	}
 

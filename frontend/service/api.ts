@@ -65,6 +65,15 @@ export interface GetLibraryResponse {
   entries: LibraryEntry[];
 }
 
+export interface ChapterDetail {
+  id: number;
+  manga_id: number;
+  chapter_number: number;
+  title: string;
+  content_text: string;
+  created_at?: string;
+}
+
 export interface Review {
   review_id: number;
   user_id: number;
@@ -154,5 +163,10 @@ export async function createReview(id: number, payload: CreateReviewRequest): Pr
 
 export async function getLibrary(): Promise<GetLibraryResponse> {
   const { data } = await http.get<GetLibraryResponse>("/library");
+  return data;
+}
+
+export async function getChapterById(id: number): Promise<ChapterDetail> {
+  const { data } = await http.get<ChapterDetail>(`/chapters/${id}`);
   return data;
 }

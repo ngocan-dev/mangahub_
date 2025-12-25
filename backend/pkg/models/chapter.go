@@ -14,5 +14,6 @@ type ChapterSummary struct {
 // Chapter represents a full chapter including its content.
 type Chapter struct {
 	ChapterSummary
-	Content string `json:"content"`
+	ContentText string     `json:"content_text"`
+	CreatedAt   *time.Time `json:"created_at,omitempty"`
 }

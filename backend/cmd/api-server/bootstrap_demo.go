@@ -164,8 +164,8 @@ func bootstrapDemoManga(ctx context.Context, mangaSvc *manga.Service, chapterSvc
 
 		for ch := 1; ch <= seed.Chapters; ch++ {
 			chapterTitle := buildChapterTitle(ch)
-			contentURL := "https://cdn.mangahub.demo/content/" + slug + "/" + strconv.Itoa(ch)
-			if _, err := chapterSvc.CreateChapter(ctx, mangaID, ch, chapterTitle, contentURL, seed.Language); err != nil {
+			content := "This is the full content of chapter " + strconv.Itoa(ch) + " for " + seed.Title + ".\n\nIt is auto-generated for demo purposes."
+			if _, err := chapterSvc.CreateChapter(ctx, mangaID, ch, chapterTitle, content, seed.Language); err != nil {
 				log.Printf("demo bootstrap: failed to create chapter %d for %s: %v", ch, seed.Title, err)
 				continue
 			}

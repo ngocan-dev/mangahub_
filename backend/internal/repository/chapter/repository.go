@@ -76,14 +76,15 @@ func (r *Repository) GetChapter(ctx context.Context, mangaID int64, chapterNumbe
 		chapter   pkgchapter.Chapter
 		title     sql.NullString
 		content   sql.NullString
+		createdAt sql.NullTime
 		updatedAt sql.NullTime
 	)
 	err := r.db.QueryRowContext(ctx, `
-        SELECT id, manga_id, number, title, content_url, updated_at
+        SELECT id, manga_id, number, title, content_text, created_at, updated_at
         FROM chapters
         WHERE manga_id = ? AND number = ?
         LIMIT 1
-    `, mangaID, chapterNumber).Scan(&chapter.ID, &chapter.MangaID, &chapter.Number, &title, &content, &updatedAt)
+    `, mangaID, chapterNumber).Scan(&chapter.ID, &chapter.MangaID, &chapter.Number, &title, &content, &createdAt, &updatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -91,11 +92,15 @@ func (r *Repository) GetChapter(ctx context.Context, mangaID int64, chapterNumbe
 		return nil, err
 	}
 	chapter.Title = title.String
+	if createdAt.Valid {
+		t := createdAt.Time
+		chapter.CreatedAt = &t
+	}
 	if updatedAt.Valid {
 		t := updatedAt.Time
 		chapter.UpdatedAt = &t
 	}
-	chapter.Content = content.String
+	chapter.ContentText = content.String
 	return &chapter, nil
 }
 
@@ -109,14 +114,15 @@ func (r *Repository) GetChapterByID(ctx context.Context, chapterID int64) (*pkgc
 		chapter   pkgchapter.Chapter
 		title     sql.NullString
 		content   sql.NullString
+		createdAt sql.NullTime
 		updatedAt sql.NullTime
 	)
 	err := r.db.QueryRowContext(ctx, `
-        SELECT id, manga_id, number, title, content_url, updated_at
+        SELECT id, manga_id, number, title, content_text, created_at, updated_at
         FROM chapters
         WHERE id = ?
         LIMIT 1
-    `, chapterID).Scan(&chapter.ID, &chapter.MangaID, &chapter.Number, &title, &content, &updatedAt)
+    `, chapterID).Scan(&chapter.ID, &chapter.MangaID, &chapter.Number, &title, &content, &createdAt, &updatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -124,11 +130,15 @@ func (r *Repository) GetChapterByID(ctx context.Context, chapterID int64) (*pkgc
 		return nil, err
 	}
 	chapter.Title = title.String
+	if createdAt.Valid {
+		t := createdAt.Time
+		chapter.CreatedAt = &t
+	}
 	if updatedAt.Valid {
 		t := updatedAt.Time
 		chapter.UpdatedAt = &t
 	}
-	chapter.Content = content.String
+	chapter.ContentText = content.String
 	return &chapter, nil
 }
 
@@ -173,17 +183,17 @@ func (r *Repository) GetChapterCount(ctx context.Context, mangaID int64) (int, e
 }
 
 // CreateChapter inserts a chapter and updates manga metadata.
-func (r *Repository) CreateChapter(ctx context.Context, mangaID int64, number int, title string, contentURL string, language string) (int64, error) {
+func (r *Repository) CreateChapter(ctx context.Context, mangaID int64, number int, title string, contentText string, language string) (int64, error) {
 	if language == "" {
 		language = "ja"
 	}
 
 	now := time.Now()
 	result, err := r.db.ExecContext(ctx, `
-INSERT INTO chapters (manga_id, number, title, language, content_url, updated_at)
+INSERT INTO chapters (manga_id, number, title, language, content_text, updated_at)
 VALUES (?, ?, ?, ?, ?, ?)
-ON CONFLICT(manga_id, number, language) DO UPDATE SET title=excluded.title, content_url=excluded.content_url, updated_at=excluded.updated_at
-`, mangaID, number, title, language, contentURL, now)
+ON CONFLICT(manga_id, number, language) DO UPDATE SET title=excluded.title, content_text=excluded.content_text, updated_at=excluded.updated_at
+`, mangaID, number, title, language, contentText, now)
 	if err != nil {
 		return 0, err
 	}
