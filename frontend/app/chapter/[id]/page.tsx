@@ -79,6 +79,27 @@ export default function ChapterPage({ params }: PageProps) {
     void syncProgress();
   }, [chapter?.chapter_number, chapter?.id, chapter?.manga_id, isAuthenticated]);
 
+  const previousChapter = useMemo(() => {
+  if (!chapter || chapterList.length === 0) return null;
+
+  return (
+      chapterList.find(
+        (item) => item.number === chapter.chapter_number - 1
+      ) ?? null
+    );
+  }, [chapter, chapterList]);
+
+
+  const nextChapter = useMemo(() => {
+    if (!chapter || chapterList.length === 0) return null;
+
+    return (
+      chapterList.find(
+        (item) => item.number === chapter.chapter_number + 1
+      ) ?? null
+    );
+  }, [chapter, chapterList]);
+
   if (loading) {
     return <p className="text-slate-300">Loading chapter...</p>;
   }
@@ -98,15 +119,6 @@ export default function ChapterPage({ params }: PageProps) {
     return <p className="text-slate-300">Chapter not found.</p>;
   }
 
-  const previousChapter = useMemo(
-    () => chapterList.find((item) => item.number === chapter.chapter_number - 1) ?? null,
-    [chapter.chapter_number, chapterList],
-  );
-
-  const nextChapter = useMemo(
-    () => chapterList.find((item) => item.number === chapter.chapter_number + 1) ?? null,
-    [chapter.chapter_number, chapterList],
-  );
 
   const showPrevious = chapter.chapter_number > 1 && previousChapter;
   const showNext = totalChapters > 0 && chapter.chapter_number < totalChapters && nextChapter;

@@ -18,7 +18,7 @@ export default function RegisterPage() {
     event.preventDefault();
     setError(null);
     try {
-      await register({ email, password, username });
+      await register(username, email, password);
       router.push("/manga");
     } catch (err) {
       setError("Could not register. Please try again.");

@@ -2,6 +2,10 @@ import axios from "axios";
 
 import { http } from "@/lib/http";
 
+/* =====================
+ * Types
+ * ===================== */
+
 export interface UserSummary {
   id: number;
   username: string;
@@ -18,37 +22,22 @@ export interface FriendRequest {
   created_at: string;
 }
 
-export interface Activity {
-  activity_id: number;
-  user_id: number;
-  username: string;
-  activity_type: string;
-  manga_id: number;
-  manga_title?: string;
-  manga_image?: string;
-  rating?: number;
-  review_id?: number;
-  review_content?: string;
-  completed_at?: string;
-  payload?: Record<string, unknown>;
-  created_at: string;
-}
-
-export interface ActivityFeedResponse {
-  activities: Activity[];
-  total: number;
-  page: number;
-  limit: number;
-  pages: number;
-}
+/* =====================
+ * API
+ * ===================== */
 
 async function searchUsers(query: string): Promise<UserSummary[]> {
   try {
-    const { data } = await http.get<{ users: UserSummary[] }>("/users/search", { params: { q: query } });
+    const { data } = await http.get<{ users: UserSummary[] }>("/users/search", {
+      params: { q: query },
+    });
     return data?.users ?? [];
   } catch (error) {
     if (axios.isAxiosError(error)) {
-      console.error("searchUsers failed", error.response?.data ?? error.message);
+      console.error(
+        "searchUsers failed",
+        error.response?.data ?? error.message,
+      );
     } else {
       console.error("searchUsers failed", error);
     }
@@ -58,10 +47,15 @@ async function searchUsers(query: string): Promise<UserSummary[]> {
 
 async function sendFriendRequest(targetUserId: number): Promise<void> {
   try {
-    await http.post("/friends/request", { target_user_id: targetUserId });
+    await http.post("/friends/request", {
+      target_user_id: targetUserId,
+    });
   } catch (error) {
     if (axios.isAxiosError(error)) {
-      console.error("sendFriendRequest failed", error.response?.data ?? error.message);
+      console.error(
+        "sendFriendRequest failed",
+        error.response?.data ?? error.message,
+      );
     } else {
       console.error("sendFriendRequest failed", error);
     }
@@ -71,10 +65,15 @@ async function sendFriendRequest(targetUserId: number): Promise<void> {
 
 async function acceptFriendRequest(requestId: number): Promise<void> {
   try {
-    await http.post("/friends/accept", { request_id: requestId });
+    await http.post("/friends/accept", {
+      request_id: requestId,
+    });
   } catch (error) {
     if (axios.isAxiosError(error)) {
-      console.error("acceptFriendRequest failed", error.response?.data ?? error.message);
+      console.error(
+        "acceptFriendRequest failed",
+        error.response?.data ?? error.message,
+      );
     } else {
       console.error("acceptFriendRequest failed", error);
     }
@@ -84,10 +83,15 @@ async function acceptFriendRequest(requestId: number): Promise<void> {
 
 async function rejectFriendRequest(requestId: number): Promise<void> {
   try {
-    await http.post("/friends/reject", { request_id: requestId });
+    await http.post("/friends/reject", {
+      request_id: requestId,
+    });
   } catch (error) {
     if (axios.isAxiosError(error)) {
-      console.error("rejectFriendRequest failed", error.response?.data ?? error.message);
+      console.error(
+        "rejectFriendRequest failed",
+        error.response?.data ?? error.message,
+      );
     } else {
       console.error("rejectFriendRequest failed", error);
     }
@@ -101,7 +105,10 @@ async function listFriends(): Promise<UserSummary[]> {
     return data?.friends ?? [];
   } catch (error) {
     if (axios.isAxiosError(error)) {
-      console.error("listFriends failed", error.response?.data ?? error.message);
+      console.error(
+        "listFriends failed",
+        error.response?.data ?? error.message,
+      );
     } else {
       console.error("listFriends failed", error);
     }
@@ -111,11 +118,16 @@ async function listFriends(): Promise<UserSummary[]> {
 
 async function listPendingRequests(): Promise<FriendRequest[]> {
   try {
-    const { data } = await http.get<{ requests: FriendRequest[] }>("/friends/requests");
+    const { data } = await http.get<{ requests: FriendRequest[] }>(
+      "/friends/requests",
+    );
     return data?.requests ?? [];
   } catch (error) {
     if (axios.isAxiosError(error)) {
-      console.error("listPendingRequests failed", error.response?.data ?? error.message);
+      console.error(
+        "listPendingRequests failed",
+        error.response?.data ?? error.message,
+      );
     } else {
       console.error("listPendingRequests failed", error);
     }
@@ -123,25 +135,9 @@ async function listPendingRequests(): Promise<FriendRequest[]> {
   }
 }
 
-async function getActivityFeed(page = 1, limit = 20): Promise<ActivityFeedResponse> {
-  try {
-    const { data } = await http.get<ActivityFeedResponse>("/friends/activity", { params: { page, limit } });
-    return {
-      activities: data?.activities ?? [],
-      total: data?.total ?? 0,
-      page: data?.page ?? page,
-      limit: data?.limit ?? limit,
-      pages: data?.pages ?? 0,
-    };
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      console.error("getActivityFeed failed", error.response?.data ?? error.message);
-    } else {
-      console.error("getActivityFeed failed", error);
-    }
-    throw error;
-  }
-}
+/* =====================
+ * Export
+ * ===================== */
 
 export const friendService = {
   searchUsers,
@@ -150,5 +146,4 @@ export const friendService = {
   rejectFriendRequest,
   listFriends,
   listPendingRequests,
-  getActivityFeed,
 };

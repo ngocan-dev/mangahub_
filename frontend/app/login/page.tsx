@@ -17,7 +17,7 @@ export default function LoginPage() {
     event.preventDefault();
     setError(null);
     try {
-      await login({ email, password });
+      await login(email, password);
       router.push("/manga");
     } catch (err) {
       setError("Failed to login. Please verify your credentials and try again.");

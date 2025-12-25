@@ -18,26 +18,27 @@ func NewRepository(db *sql.DB) *Repository {
 }
 
 // FindUsersByQuery searches users by username or email (case-insensitive) excluding self and existing friends.
-func (r *Repository) FindUsersByQuery(ctx context.Context, userID int64, query string) ([]UserSummary, error) {
+func (r *Repository) FindUsersByQuery(
+	ctx context.Context,
+	userID int64,
+	query string,
+) ([]UserSummary, error) {
+
 	rows, err := r.db.QueryContext(ctx, `
-WITH friend_ids AS (
-    SELECT friend_id AS id FROM friends WHERE user_id = ?
-    UNION
-    SELECT user_id AS id FROM friends WHERE friend_id = ?
-),
-pending AS (
-    SELECT CASE WHEN from_user_id = ? THEN to_user_id ELSE from_user_id END AS id
-    FROM friend_requests
-    WHERE status = 'pending' AND (from_user_id = ? OR to_user_id = ?)
-)
-SELECT id, username, email, COALESCE(avatar_url, '') AS avatar
+SELECT
+	id,
+	username,
+	email,
+	COALESCE(avatar_url, '') AS avatar
 FROM users
-WHERE (LOWER(username) LIKE LOWER(?) OR LOWER(email) LIKE LOWER(?))
-  AND id != ?
-  AND id NOT IN (SELECT id FROM friend_ids)
-  AND id NOT IN (SELECT id FROM pending)
+WHERE
+	id != ?
+	AND (
+		LOWER(username) LIKE LOWER(?)
+		OR LOWER(email) LIKE LOWER(?)
+	)
 LIMIT 20
-    `, userID, userID, userID, userID, userID, "%"+query+"%", "%"+query+"%", userID)
+	`, userID, "%"+query+"%", "%"+query+"%")
 	if err != nil {
 		return nil, err
 	}
@@ -45,16 +46,14 @@ LIMIT 20
 
 	var users []UserSummary
 	for rows.Next() {
-		var user UserSummary
-		if err := rows.Scan(&user.ID, &user.Username, &user.Email, &user.AvatarURL); err != nil {
+		var u UserSummary
+		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.AvatarURL); err != nil {
 			return nil, err
 		}
-		users = append(users, user)
+		users = append(users, u)
 	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return users, nil
+
+	return users, rows.Err()
 }
 
 // FindUserByID returns a user summary by id
@@ -160,7 +159,7 @@ func (r *Repository) CreateFriendshipBidirectional(ctx context.Context, userID, 
 		}
 	}()
 
-	insertStmt := `INSERT OR IGNORE INTO friends (user_id, friend_id) VALUES (?, ?)`
+	insertStmt := `INSERT IGNORE INTO friends (user_id, friend_id) VALUES (?, ?)`
 	if _, err = tx.ExecContext(ctx, insertStmt, userID, friendID); err != nil {
 		return err
 	}

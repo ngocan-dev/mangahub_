@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import ProtectedRoute from "../components/ProtectedRoute"; // Adjusted path to match the file structure
-import { friendService, type Activity, type FriendRequest, type UserSummary } from "@/service/friend.service";
+import ProtectedRoute from "../components/ProtectedRoute";
+import { friendService, type FriendRequest, type UserSummary } from "@/service/friend.service";
 
 type DirectMessage = {
   from: number;
@@ -13,37 +13,26 @@ type DirectMessage = {
 };
 
 export default function FriendsPage() {
-  const [query, setQuery] = useState<string>("");
+  const [query, setQuery] = useState("");
   const [results, setResults] = useState<UserSummary[]>([]);
-  const [activity, setActivity] = useState<Activity[]>([]);
   const [friends, setFriends] = useState<UserSummary[]>([]);
   const [pendingRequests, setPendingRequests] = useState<FriendRequest[]>([]);
   const [requestMessage, setRequestMessage] = useState<string | null>(null);
-  const [requestId, setRequestId] = useState<string>("");
+  const [requestId, setRequestId] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [chatError, setChatError] = useState<string | null>(null);
+
+  // Chat
   const [selectedFriend, setSelectedFriend] = useState<UserSummary | null>(null);
   const [chatMessages, setChatMessages] = useState<DirectMessage[]>([]);
-  const [chatInput, setChatInput] = useState<string>("");
+  const [chatInput, setChatInput] = useState("");
+  const [chatError, setChatError] = useState<string | null>(null);
+
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const wsBase = useMemo(() => {
-    if (typeof window === "undefined") return "";
-    const env = process.env.NEXT_PUBLIC_WS_URL;
-    if (env) return env.replace(/^http/, "ws");
-    return window.location.origin.replace(/^http/, "ws");
-  }, []);
-
-  const loadActivity = async () => {
-    try {
-      const feed = await friendService.getActivityFeed();
-      setActivity(feed.activities);
-    } catch (err) {
-      setError("Could not load friend activity.");
-      console.error(err);
-    }
-  };
+  // ------------------------
+  // Loaders
+  // ------------------------
 
   const loadFriends = async () => {
     try {
@@ -62,6 +51,10 @@ export default function FriendsPage() {
       console.error(err);
     }
   };
+
+  // ------------------------
+  // Search
+  // ------------------------
 
   const handleSearch = async () => {
     setError(null);
@@ -85,15 +78,16 @@ export default function FriendsPage() {
     }
   };
 
-  const handleAcceptRequest = async (requestIdOverride?: number) => {
-    const id = requestIdOverride ?? Number.parseInt(requestId.trim(), 10);
-    if (!id) return;
+  // ------------------------
+  // Accept / Reject (CÁCH A – CHUẨN REACT)
+  // ------------------------
+
+  const handleAcceptRequest = async (id: number) => {
     setError(null);
     try {
       await friendService.acceptFriendRequest(id);
       setRequestMessage("Request accepted.");
       setRequestId("");
-      await loadActivity();
       await loadFriends();
       await loadPendingRequests();
     } catch (err) {
@@ -102,9 +96,7 @@ export default function FriendsPage() {
     }
   };
 
-  const handleRejectRequest = async (requestIdOverride?: number) => {
-    const id = requestIdOverride ?? Number.parseInt(requestId.trim(), 10);
-    if (!id) return;
+  const handleRejectRequest = async (id: number) => {
     setError(null);
     try {
       await friendService.rejectFriendRequest(id);
@@ -117,9 +109,26 @@ export default function FriendsPage() {
     }
   };
 
+  const handleAcceptByInput = async () => {
+    const id = Number.parseInt(requestId.trim(), 10);
+    if (!id) return;
+    await handleAcceptRequest(id);
+  };
+
+  const handleRejectByInput = async () => {
+    const id = Number.parseInt(requestId.trim(), 10);
+    if (!id) return;
+    await handleRejectRequest(id);
+  };
+
+  // ------------------------
+  // Chat (WS – chỉ dùng khi chat)
+  // ------------------------
+
   const disconnectSocket = () => {
-    reconnectRef.current && clearTimeout(reconnectRef.current);
+    if (reconnectRef.current) clearTimeout(reconnectRef.current);
     reconnectRef.current = null;
+
     if (socketRef.current) {
       socketRef.current.close();
       socketRef.current = null;
@@ -127,27 +136,28 @@ export default function FriendsPage() {
   };
 
   const connectChat = (friend: UserSummary) => {
-    if (!wsBase) return;
     disconnectSocket();
     setSelectedFriend(friend);
     setChatMessages([]);
     setChatError(null);
 
-    const ws = new WebSocket(`${wsBase}/ws/chat?friend_id=${friend.id}`);
+    const ws = new WebSocket(`ws://localhost:8080/ws/chat?friend_id=${friend.id}`);
     socketRef.current = ws;
+
     ws.onmessage = (event) => {
       try {
         const msg = JSON.parse(event.data) as DirectMessage;
         setChatMessages((prev) => [...prev, msg]);
       } catch (e) {
-        console.error("failed to parse message", e);
+        console.error(e);
       }
     };
+
     ws.onclose = () => {
       reconnectRef.current = setTimeout(() => connectChat(friend), 1500);
     };
-    ws.onerror = (evt) => {
-      console.error("chat socket error", evt);
+
+    ws.onerror = () => {
       setChatError("Chat connection error");
     };
   };
@@ -156,6 +166,7 @@ export default function FriendsPage() {
     if (!socketRef.current || !selectedFriend) return;
     const trimmed = chatInput.trim();
     if (!trimmed) return;
+
     try {
       socketRef.current.send(JSON.stringify({ message: trimmed }));
       setChatInput("");
@@ -165,171 +176,110 @@ export default function FriendsPage() {
     }
   };
 
+  // ------------------------
+  // Init
+  // ------------------------
+
   useEffect(() => {
-    void loadActivity();
     void loadFriends();
     void loadPendingRequests();
-    return () => {
-      disconnectSocket();
-    };
+    return () => disconnectSocket();
   }, []);
+
+  // ------------------------
+  // Render
+  // ------------------------
 
   return (
     <ProtectedRoute>
       <section className="space-y-4">
-        <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-lg">
-          <h1 className="text-2xl font-semibold text-white">Friends & Activity</h1>
-          <p className="text-sm text-slate-400">
-            Discover readers, send friend requests, and keep up with your friends&apos; activity.
-          </p>
+        <h1 className="text-2xl font-semibold text-white">Friends</h1>
+
+        {/* Search */}
+        <div className="card space-y-2">
+          <input
+            placeholder="Search users"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+          />
+          <button className="btn-primary" onClick={handleSearch}>
+            Search
+          </button>
+
+          {results.map((user) => (
+            <div key={user.id} className="flex justify-between">
+              <span>{user.username}</span>
+              <button onClick={() => handleSendRequest(user.id)}>Add</button>
+            </div>
+          ))}
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="card space-y-3">
-            <h2 className="text-lg font-semibold text-white">Find readers</h2>
-            <div className="flex gap-2">
-              <input
-                className="w-full"
-                placeholder="Search by username or email"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              />
-              <button className="btn-primary" onClick={handleSearch}>
-                Search
-              </button>
-            </div>
-            <div className="space-y-2">
-              {results.map((user) => (
-                <div key={user.id} className="flex items-center justify-between rounded-lg bg-slate-800 px-3 py-2">
-                  <div>
-                    <p className="text-sm font-medium text-white">{user.username ?? "Reader"}</p>
-                    <p className="text-xs text-slate-400">{user.email}</p>
-                  </div>
-                  <button className="btn-secondary text-xs" onClick={() => handleSendRequest(user.id)}>
-                    Add friend
-                  </button>
-                </div>
-              ))}
-              {!results.length ? <p className="text-sm text-slate-400">No users found yet.</p> : null}
-            </div>
-          </div>
+        {/* Pending */}
+        <div className="card space-y-2">
+          <input
+            placeholder="Request ID"
+            value={requestId}
+            onChange={(e) => setRequestId(e.target.value)}
+          />
 
-          <div className="card space-y-3">
-            <h2 className="text-lg font-semibold text-white">Respond to requests</h2>
-            <div className="space-y-2">
-              <input
-                placeholder="Request ID"
-                value={requestId}
-                onChange={(e) => setRequestId(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAcceptRequest()}
-              />
-              <button className="btn-primary w-full" onClick={handleAcceptRequest}>
-                Accept request
-              </button>
-              <button className="btn-secondary w-full" onClick={handleRejectRequest}>
-                Reject request
-              </button>
-              {requestMessage ? <p className="text-sm text-emerald-300">{requestMessage}</p> : null}
-            </div>
-            <div className="space-y-2 rounded-lg bg-slate-800 p-3">
-              <p className="text-sm font-semibold text-white">Pending incoming</p>
-              {pendingRequests.map((req) => (
-                <div key={req.id} className="flex items-center justify-between text-sm text-slate-200">
-                  <span>
-                    Request #{req.id} from {req.from_username ?? `user ${req.from_user_id}`}
-                  </span>
-                  <div className="flex gap-2">
-                    <button className="btn-secondary text-xs" onClick={() => handleAcceptRequest(req.id)}>
-                      Accept
-                    </button>
-                    <button className="btn-secondary text-xs" onClick={() => handleRejectRequest(req.id)}>
-                      Reject
-                    </button>
-                  </div>
-                </div>
-              ))}
-              {!pendingRequests.length ? <p className="text-xs text-slate-400">No incoming requests.</p> : null}
-            </div>
-          </div>
-        </div>
+          <button className="btn-primary w-full" onClick={handleAcceptByInput}>
+            Accept request
+          </button>
 
-          <div className="card space-y-3">
-            <h2 className="text-lg font-semibold text-white">Recent activity</h2>
-            {activity.length ? (
-              <ul className="space-y-2">
-                {activity.map((item) => (
-                <li key={item.activity_id} className="rounded-lg bg-slate-800 px-3 py-2 text-sm text-slate-200">
-                  <div className="flex items-center justify-between">
-                    <span>{item.username ?? "Someone"}</span>
-                    <span className="text-xs text-slate-500">{new Date(item.created_at).toLocaleString()}</span>
-                  </div>
-                  <p className="text-slate-300">
-                    {item.activity_type} {item.payload?.current_chapter ? `(Chapter ${item.payload.current_chapter as number})` : ""}
-                  </p>
-                  {item.manga_title ? <p className="text-xs text-slate-400">Manga: {item.manga_title}</p> : null}
-                  {item.payload?.content ? (
-                    <p className="text-xs text-slate-400">Review: {(item.payload.content as string).slice(0, 80)}</p>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-slate-400">No activity yet.</p>
-          )}
-        </div>
-        <div className="card space-y-3">
-          <h2 className="text-lg font-semibold text-white">Friends</h2>
-          <div className="space-y-2">
-            {friends.map((friend) => (
-              <div key={friend.id} className="flex items-center justify-between rounded-lg bg-slate-800 px-3 py-2">
-                <div>
-                  <p className="text-sm font-medium text-white">{friend.username}</p>
-                  <p className="text-xs text-slate-400">{friend.email}</p>
-                </div>
-                <button className="btn-secondary text-xs" onClick={() => connectChat(friend)}>
-                  Chat
-                </button>
+          <button className="btn-secondary w-full" onClick={handleRejectByInput}>
+            Reject request
+          </button>
+
+          {pendingRequests.map((req) => (
+            <div key={req.id} className="flex justify-between">
+              <span>#{req.id} from {req.from_username}</span>
+              <div className="flex gap-2">
+                <button onClick={() => handleAcceptRequest(req.id)}>Accept</button>
+                <button onClick={() => handleRejectRequest(req.id)}>Reject</button>
               </div>
-            ))}
-            {!friends.length ? <p className="text-sm text-slate-400">No friends yet.</p> : null}
-          </div>
+            </div>
+          ))}
         </div>
 
-        {selectedFriend ? (
-          <div className="card space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-white">Chat with {selectedFriend.username}</h2>
-              <button className="btn-secondary" onClick={disconnectSocket}>
-                Disconnect
-              </button>
+        {/* Friends */}
+        <div className="card space-y-2">
+          {friends.map((f) => (
+            <div key={f.id} className="flex justify-between">
+              <span>{f.username}</span>
+              <button onClick={() => connectChat(f)}>Chat</button>
             </div>
-            <div className="max-h-64 overflow-y-auto space-y-2 rounded-lg bg-slate-800 p-3">
-              {chatMessages.map((msg, idx) => (
-                <div key={`${msg.timestamp}-${idx}`} className="text-sm">
-                  <span className="font-semibold text-emerald-300">{msg.from === selectedFriend.id ? selectedFriend.username : "You"}</span>:{" "}
-                  <span>{msg.message}</span>
+          ))}
+        </div>
+
+        {/* Chat */}
+        {selectedFriend && (
+          <div className="card space-y-2">
+            <h2>Chat with {selectedFriend.username}</h2>
+
+            <div className="space-y-1">
+              {chatMessages.map((m, i) => (
+                <div key={i}>
+                  <strong>{m.from === selectedFriend.id ? selectedFriend.username : "You"}:</strong>{" "}
+                  {m.message}
                 </div>
               ))}
-              {!chatMessages.length ? <p className="text-sm text-slate-400">No messages yet.</p> : null}
             </div>
-            <div className="flex gap-2">
-              <input
-                className="w-full"
-                placeholder="Say hi..."
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && sendChatMessage()}
-              />
-              <button className="btn-primary" onClick={sendChatMessage}>
-                Send
-              </button>
-            </div>
-            {chatError ? <p className="text-sm text-red-400">{chatError}</p> : null}
-          </div>
-        ) : null}
 
-        {error ? <p className="text-red-400">{error}</p> : null}
+            <input
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && sendChatMessage()}
+            />
+
+            <button onClick={sendChatMessage}>Send</button>
+
+            {chatError && <p className="text-red-400">{chatError}</p>}
+          </div>
+        )}
+
+        {error && <p className="text-red-400">{error}</p>}
+        {requestMessage && <p className="text-green-400">{requestMessage}</p>}
       </section>
     </ProtectedRoute>
   );
