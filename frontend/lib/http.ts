@@ -18,9 +18,13 @@ const http: AxiosInstance = axios.create({
 http.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const token = getToken();
   if (token) {
-    config.headers = config.headers ?? {};
-    if (!config.headers.Authorization) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (typeof config.headers?.set === "function") {
+      config.headers.set("Authorization", `Bearer ${token}`);
+    } else {
+      config.headers = {
+        ...(config.headers ?? {}),
+        Authorization: `Bearer ${token}`,
+      };
     }
   }
   return config;
@@ -30,8 +34,16 @@ http.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     if (error.response?.status === 401 && typeof window !== "undefined") {
-      localStorage.removeItem("token");
-      window.dispatchEvent(new Event("auth:unauthorized"));
+      const code = (() => {
+        const data = error.response?.data as { code?: string; error?: string } | undefined;
+        const value = data?.code ?? data?.error;
+        return typeof value === "string" ? value.toUpperCase() : "";
+      })();
+
+      if (["TOKEN_INVALID", "TOKEN_EXPIRED", "TOKEN_CLAIMS_INVALID", "TOKEN_NOT_BEFORE"].includes(code)) {
+        localStorage.removeItem("token");
+        window.dispatchEvent(new Event("auth:unauthorized"));
+      }
     }
     return Promise.reject(error);
   },
