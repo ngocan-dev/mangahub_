@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 )
@@ -76,6 +77,7 @@ func (r *Repository) GetFriends(ctx context.Context, userID int64) ([]int64, err
         UNION
         SELECT User_Id FROM Friends WHERE Friend_Id = ? AND Status = 'accepted'
     `
+	log.Printf("history.repository.GetFriends: querying friends for user_id=%d", userID)
 	rows, err := r.db.QueryContext(ctx, query, userID, userID)
 	if err != nil {
 		return nil, err
@@ -95,6 +97,7 @@ func (r *Repository) GetFriends(ctx context.Context, userID int64) ([]int64, err
 
 // GetFriendsActivities returns friend feed entries
 func (r *Repository) GetFriendsActivities(ctx context.Context, userID int64, page, limit int) ([]Activity, int, error) {
+	log.Printf("history.repository.GetFriendsActivities: start user_id=%d page=%d limit=%d", userID, page, limit)
 	friendIDs, err := r.GetFriends(ctx, userID)
 	if err != nil {
 		return nil, 0, err
@@ -134,6 +137,7 @@ func (r *Repository) GetFriendsActivities(ctx context.Context, userID int64, pag
 	var total int
 	countArgs := append(append(args, args...), args...)
 	if err := r.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
+		log.Printf("history.repository.GetFriendsActivities: count query failed user_id=%d err=%v", userID, err)
 		return nil, 0, err
 	}
 	if total == 0 {
@@ -237,6 +241,7 @@ func (r *Repository) GetFriendsActivities(ctx context.Context, userID int64, pag
 
 	rows, err := r.db.QueryContext(ctx, query, append(append(append(args, args...), args...), limit, offset)...)
 	if err != nil {
+		log.Printf("history.repository.GetFriendsActivities: list query failed user_id=%d err=%v", userID, err)
 		return nil, 0, err
 	}
 	defer rows.Close()
@@ -290,6 +295,7 @@ func (r *Repository) GetFriendsActivities(ctx context.Context, userID int64, pag
 func (r *Repository) CalculateReadingStatistics(ctx context.Context, userID int64) (*ReadingStatistics, error) {
 	stats := &ReadingStatistics{UserID: userID}
 
+	log.Printf("history.repository.CalculateReadingStatistics: aggregating stats for user_id=%d", userID)
 	err := r.db.QueryRowContext(ctx, `
         SELECT
             COALESCE(SUM(rp.Current_Chapter), 0) as total_chapters_read,
@@ -314,6 +320,7 @@ func (r *Repository) CalculateReadingStatistics(ctx context.Context, userID int6
 
 	stats.AverageRating = float64(int(stats.AverageRating*100+0.5)) / 100
 
+	log.Printf("history.repository.CalculateReadingStatistics: querying favorite genres user_id=%d", userID)
 	rows, err := r.db.QueryContext(ctx, `
         SELECT n.Genre, COUNT(*) as manga_count, COALESCE(SUM(rp.Current_Chapter), 0) as chapters_read
         FROM User_Library ul
@@ -335,13 +342,14 @@ func (r *Repository) CalculateReadingStatistics(ctx context.Context, userID int6
 	}
 
 	stats.MonthlyStats = []MonthlyStat{}
+	log.Printf("history.repository.CalculateReadingStatistics: querying monthly stats user_id=%d", userID)
 	rows, err = r.db.QueryContext(ctx, `
         SELECT
-            strftime('%Y', Last_Read_At) as year,
-            strftime('%m', Last_Read_At) as month,
-            SUM(Current_Chapter) as chapters_read,
-            COUNT(DISTINCT CASE WHEN ul.Status = 'completed' THEN ul.Novel_Id END) as manga_completed,
-            COUNT(DISTINCT CASE WHEN ul.Status = 'reading' THEN ul.Novel_Id END) as manga_started
+            COALESCE(CAST(strftime('%Y', Last_Read_At) AS INTEGER), 0) as year,
+            COALESCE(CAST(strftime('%m', Last_Read_At) AS INTEGER), 0) as month,
+            COALESCE(SUM(Current_Chapter), 0) as chapters_read,
+            COALESCE(COUNT(DISTINCT CASE WHEN ul.Status = 'completed' THEN ul.Novel_Id END), 0) as manga_completed,
+            COALESCE(COUNT(DISTINCT CASE WHEN ul.Status = 'reading' THEN ul.Novel_Id END), 0) as manga_started
         FROM Reading_Progress rp
         JOIN User_Library ul ON rp.User_Id = ul.User_Id AND rp.Novel_Id = ul.Novel_Id
         WHERE rp.User_Id = ?
@@ -355,18 +363,21 @@ func (r *Repository) CalculateReadingStatistics(ctx context.Context, userID int6
 			var stat MonthlyStat
 			if err := rows.Scan(&stat.Year, &stat.Month, &stat.ChaptersRead, &stat.MangaCompleted, &stat.MangaStarted); err == nil {
 				stats.MonthlyStats = append(stats.MonthlyStats, stat)
+			} else {
+				log.Printf("history.repository.CalculateReadingStatistics: scan monthly stats failed user_id=%d err=%v", userID, err)
 			}
 		}
 	}
 
 	stats.YearlyStats = []YearlyStat{}
+	log.Printf("history.repository.CalculateReadingStatistics: querying yearly stats user_id=%d", userID)
 	rows, err = r.db.QueryContext(ctx, `
         SELECT
-            strftime('%Y', Last_Read_At) as year,
-            SUM(Current_Chapter) as chapters_read,
-            COUNT(DISTINCT CASE WHEN ul.Status = 'completed' THEN ul.Novel_Id END) as manga_completed,
-            COUNT(DISTINCT CASE WHEN ul.Status = 'reading' THEN ul.Novel_Id END) as manga_started,
-            COUNT(DISTINCT date(Last_Read_At)) as total_days
+            COALESCE(CAST(strftime('%Y', Last_Read_At) AS INTEGER), 0) as year,
+            COALESCE(SUM(Current_Chapter), 0) as chapters_read,
+            COALESCE(COUNT(DISTINCT CASE WHEN ul.Status = 'completed' THEN ul.Novel_Id END), 0) as manga_completed,
+            COALESCE(COUNT(DISTINCT CASE WHEN ul.Status = 'reading' THEN ul.Novel_Id END), 0) as manga_started,
+            COALESCE(COUNT(DISTINCT date(Last_Read_At)), 0) as total_days
         FROM Reading_Progress rp
         JOIN User_Library ul ON rp.User_Id = ul.User_Id AND rp.Novel_Id = ul.Novel_Id
         WHERE rp.User_Id = ?
@@ -380,6 +391,8 @@ func (r *Repository) CalculateReadingStatistics(ctx context.Context, userID int6
 			var stat YearlyStat
 			if err := rows.Scan(&stat.Year, &stat.ChaptersRead, &stat.MangaCompleted, &stat.MangaStarted, &stat.TotalDays); err == nil {
 				stats.YearlyStats = append(stats.YearlyStats, stat)
+			} else {
+				log.Printf("history.repository.CalculateReadingStatistics: scan yearly stats failed user_id=%d err=%v", userID, err)
 			}
 		}
 	}
@@ -466,6 +479,8 @@ func (r *Repository) GetCachedReadingStatistics(ctx context.Context, userID int6
     `
 	var stats ReadingStatistics
 	var favoriteGenresJSON, monthlyStatsJSON, yearlyStatsJSON sql.NullString
+	var lastCalculatedAt sql.NullTime
+	log.Printf("history.repository.GetCachedReadingStatistics: fetching cache for user_id=%d", userID)
 	err := r.db.QueryRowContext(ctx, query, userID).Scan(
 		&stats.TotalChaptersRead,
 		&stats.TotalMangaRead,
@@ -478,7 +493,7 @@ func (r *Repository) GetCachedReadingStatistics(ctx context.Context, userID int6
 		&stats.LongestStreakDays,
 		&monthlyStatsJSON,
 		&yearlyStatsJSON,
-		&stats.LastCalculatedAt,
+		&lastCalculatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -496,6 +511,9 @@ func (r *Repository) GetCachedReadingStatistics(ctx context.Context, userID int6
 	}
 	if yearlyStatsJSON.Valid {
 		_ = json.Unmarshal([]byte(yearlyStatsJSON.String), &stats.YearlyStats)
+	}
+	if lastCalculatedAt.Valid {
+		stats.LastCalculatedAt = lastCalculatedAt.Time
 	}
 
 	return &stats, nil

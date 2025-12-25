@@ -14,6 +14,7 @@ var (
 	ErrMangaNotFound        = errors.New("manga not found")
 	ErrMangaNotInLibrary    = errors.New("manga not in library")
 	ErrDatabaseError        = errors.New("database error")
+	ErrNoData               = errors.New("no data available")
 )
 
 // ChapterService exposes chapter operations needed by history
@@ -147,6 +148,9 @@ func (s *Service) GetFriendsActivityFeed(ctx context.Context, userID int64, page
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
 	}
+	if len(activities) == 0 {
+		return nil, ErrNoData
+	}
 	pages := 0
 	if limit > 0 {
 		pages = (total + limit - 1) / limit
@@ -175,6 +179,12 @@ func (s *Service) GetReadingStatistics(ctx context.Context, userID int64, force 
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
 	}
+	if stats == nil {
+		return nil, ErrNoData
+	}
+	if stats.LastCalculatedAt.IsZero() {
+		stats.LastCalculatedAt = time.Now()
+	}
 
 	if err := s.repo.SaveReadingStatistics(ctx, stats); err != nil {
 		// ignore cache error
@@ -185,6 +195,9 @@ func (s *Service) GetReadingStatistics(ctx context.Context, userID int64, force 
 
 // GetReadingAnalytics filters stats
 func (s *Service) GetReadingAnalytics(ctx context.Context, userID int64, req ReadingAnalyticsRequest) (*ReadingStatistics, error) {
+	if req.TimePeriod == "" {
+		req.TimePeriod = "month"
+	}
 	stats, err := s.GetReadingStatistics(ctx, userID, false)
 	if err != nil {
 		return nil, err
