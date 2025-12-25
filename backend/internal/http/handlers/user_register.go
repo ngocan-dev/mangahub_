@@ -9,7 +9,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	sqlite3 "github.com/mattn/go-sqlite3"
-	"golang.org/x/crypto/bcrypt"
 	modernSQLite "modernc.org/sqlite"
 	sqliteLib "modernc.org/sqlite/lib"
 
@@ -74,7 +73,7 @@ func (h *UserHandler) Register(c *gin.Context) {
 			return
 		}
 
-		if errors.Is(err, bcrypt.ErrPasswordTooShort) {
+		if errors.Is(err, user.ErrPasswordHashing) {
 			log.Printf("register: password hashing failed: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not hash password"})
 			return
@@ -82,7 +81,7 @@ func (h *UserHandler) Register(c *gin.Context) {
 
 		if isSQLiteConstraintError(err) {
 			log.Printf("register: constraint violation: %v", err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid user data"})
+			c.JSON(http.StatusConflict, gin.H{"error": "user already exists"})
 			return
 		}
 
@@ -106,8 +105,9 @@ func isValidationError(err error) bool {
 func isSQLiteConstraintError(err error) bool {
 	var sqliteErr *sqlite3.Error
 	if errors.As(err, &sqliteErr) {
-		return sqliteErr.ExtendedCode == sqlite3.ErrConstraint ||
-			sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique
+		return sqliteErr.Code == sqlite3.ErrConstraint ||
+			sqliteErr.ExtendedCode == sqlite3.ErrConstraintUnique ||
+			sqliteErr.ExtendedCode == sqlite3.ErrConstraintPrimaryKey
 	}
 
 	var modernErr *modernSQLite.Error
