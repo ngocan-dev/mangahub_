@@ -3,10 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 
 import ProtectedRoute from "../components/ProtectedRoute";
-import { analyticsService, type ReadingAnalyticsPoint, type ReadingStatistic } from "@/service/analytics.service"; // Adjusted path
+import {
+  analyticsService,
+  type ReadingAnalyticsPoint,
+  type ReadingAnalyticsResponse,
+  type ReadingSummary,
+} from "@/service/analytics.service"; // Adjusted path
 
 export default function AnalyticsPage() {
-  const [stats, setStats] = useState<ReadingStatistic | null>(null);
+  const [stats, setStats] = useState<ReadingSummary | null>(null);
   const [analytics, setAnalytics] = useState<ReadingAnalyticsPoint[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -16,12 +21,12 @@ export default function AnalyticsPage() {
       setLoading(true);
       setError(null);
       try {
-        const [statData, analyticsData] = await Promise.all([
+        const [statData, analyticsData]: [ReadingSummary, ReadingAnalyticsResponse] = await Promise.all([
           analyticsService.getReadingStatistics(),
           analyticsService.getReadingAnalytics(),
         ]);
         setStats(statData);
-        setAnalytics(analyticsData);
+        setAnalytics(analyticsData.daily ?? []);
       } catch (err) {
         setError("Unable to load analytics right now.");
         console.error(err);
@@ -33,7 +38,7 @@ export default function AnalyticsPage() {
   }, []);
 
   const maxChapters = useMemo(
-    () => (analytics.length ? Math.max(...analytics.map((item) => item.chaptersRead)) : 0),
+    () => (analytics.length ? Math.max(...analytics.map((item) => item.chapters_read)) : 0),
     [analytics],
   );
 
@@ -52,17 +57,18 @@ export default function AnalyticsPage() {
           <div className="grid gap-4 md:grid-cols-3">
             <div className="card">
               <p className="text-sm text-slate-400">Chapters read</p>
-              <p className="text-2xl font-semibold text-white">{stats.totalChaptersRead}</p>
+              <p className="text-2xl font-semibold text-white">{stats.total_chapters_read}</p>
             </div>
             <div className="card">
-              <p className="text-sm text-slate-400">Time spent</p>
-              <p className="text-2xl font-semibold text-white">
-                {stats.totalTimeMinutes ? `${stats.totalTimeMinutes} min` : "N/A"}
-              </p>
+              <p className="text-sm text-slate-400">Manga tracked</p>
+              <p className="text-2xl font-semibold text-white">{stats.total_manga}</p>
             </div>
             <div className="card">
               <p className="text-sm text-slate-400">Streak</p>
-              <p className="text-2xl font-semibold text-white">{stats.streakDays ?? 0} days</p>
+              <p className="text-2xl font-semibold text-white">{stats.reading_streak ?? 0} days</p>
+              {stats.last_read_at ? (
+                <p className="text-xs text-slate-400">Last read: {new Date(stats.last_read_at).toLocaleString()}</p>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -72,14 +78,14 @@ export default function AnalyticsPage() {
             <h2 className="text-lg font-semibold text-white">Recent reading</h2>
             <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
               {analytics.map((point) => {
-                const height = maxChapters ? Math.round((point.chaptersRead / maxChapters) * 100) : 0;
+                const height = maxChapters ? Math.round((point.chapters_read / maxChapters) * 100) : 0;
                 return (
                   <div key={point.date} className="flex flex-col items-center gap-2 text-sm text-slate-300">
                     <div className="flex h-28 w-full items-end rounded-lg bg-slate-800 p-1">
                       <div className="w-full rounded bg-secondary" style={{ height: `${height}%` }} />
                     </div>
                     <span className="text-xs text-slate-500">{new Date(point.date).toLocaleDateString()}</span>
-                    <span className="text-xs text-white">{point.chaptersRead} ch.</span>
+                    <span className="text-xs text-white">{point.chapters_read} ch.</span>
                   </div>
                 );
               })}

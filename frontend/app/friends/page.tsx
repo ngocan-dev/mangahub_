@@ -3,20 +3,20 @@
 import { useEffect, useState } from "react";
 
 import ProtectedRoute from "../components/ProtectedRoute"; // Adjusted path to match the file structure
-import { friendService, type FriendActivity, type UserSummary } from "@/service/friend.service";
+import { friendService, type Activity, type UserSummary } from "@/service/friend.service";
 
 export default function FriendsPage() {
   const [query, setQuery] = useState<string>("");
   const [results, setResults] = useState<UserSummary[]>([]);
-  const [activity, setActivity] = useState<FriendActivity[]>([]);
+  const [activity, setActivity] = useState<Activity[]>([]);
   const [requestMessage, setRequestMessage] = useState<string | null>(null);
-  const [requestId, setRequestId] = useState<string>("");
+  const [requestUsername, setRequestUsername] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
 
   const loadActivity = async () => {
     try {
       const feed = await friendService.getActivityFeed();
-      setActivity(feed);
+      setActivity(feed.activities);
     } catch (err) {
       setError("Could not load friend activity.");
       console.error(err);
@@ -34,10 +34,10 @@ export default function FriendsPage() {
     }
   };
 
-  const handleSendRequest = async (userId: string) => {
+  const handleSendRequest = async (username: string) => {
     setRequestMessage(null);
     try {
-      await friendService.sendFriendRequest({ toUserId: userId, message: "Let’s read together!" });
+      await friendService.sendFriendRequest(username);
       setRequestMessage("Friend request sent.");
     } catch (err) {
       setError("Could not send friend request.");
@@ -46,12 +46,12 @@ export default function FriendsPage() {
   };
 
   const handleAcceptRequest = async () => {
-    if (!requestId.trim()) return;
+    if (!requestUsername.trim()) return;
     setError(null);
     try {
-      await friendService.acceptFriendRequest(requestId.trim());
+      await friendService.acceptFriendRequest(requestUsername.trim());
       setRequestMessage("Request accepted.");
-      setRequestId("");
+      setRequestUsername("");
       await loadActivity();
     } catch (err) {
       setError("Unable to accept request.");
@@ -95,7 +95,7 @@ export default function FriendsPage() {
                     <p className="text-sm font-medium text-white">{user.username ?? "Reader"}</p>
                     <p className="text-xs text-slate-400">{user.email}</p>
                   </div>
-                  <button className="btn-secondary text-xs" onClick={() => handleSendRequest(user.id)}>
+                  <button className="btn-secondary text-xs" onClick={() => handleSendRequest(user.username)}>
                     Add friend
                   </button>
                 </div>
@@ -108,9 +108,9 @@ export default function FriendsPage() {
             <h2 className="text-lg font-semibold text-white">Respond to requests</h2>
             <div className="space-y-2">
               <input
-                placeholder="Request ID"
-                value={requestId}
-                onChange={(e) => setRequestId(e.target.value)}
+                placeholder="Requester username"
+                value={requestUsername}
+                onChange={(e) => setRequestUsername(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleAcceptRequest()}
               />
               <button className="btn-primary w-full" onClick={handleAcceptRequest}>
@@ -126,12 +126,13 @@ export default function FriendsPage() {
           {activity.length ? (
             <ul className="space-y-2">
               {activity.map((item) => (
-                <li key={item.id} className="rounded-lg bg-slate-800 px-3 py-2 text-sm text-slate-200">
+                <li key={item.activity_id} className="rounded-lg bg-slate-800 px-3 py-2 text-sm text-slate-200">
                   <div className="flex items-center justify-between">
-                    <span>{item.actor?.username ?? item.actor?.email ?? "Someone"}</span>
-                    <span className="text-xs text-slate-500">{new Date(item.createdAt).toLocaleString()}</span>
+                    <span>{item.username ?? "Someone"}</span>
+                    <span className="text-xs text-slate-500">{new Date(item.created_at).toLocaleString()}</span>
                   </div>
-                  <p className="text-slate-300">{item.action}</p>
+                  <p className="text-slate-300">{item.activity_type}</p>
+                  {item.manga_title ? <p className="text-xs text-slate-400">Manga: {item.manga_title}</p> : null}
                 </li>
               ))}
             </ul>

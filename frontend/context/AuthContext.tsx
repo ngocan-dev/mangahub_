@@ -2,8 +2,8 @@
 
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
-import type { AuthResponse } from "@/service/api";
-import { login as apiLogin, register as apiRegister } from "@/service/api";
+import type { AuthResponse } from "@/service/auth.service";
+import { authService } from "@/service/auth.service";
 
 export interface AuthUser {
   id?: number;
@@ -79,7 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (credentials: { email: string; password: string }) => {
       setLoading(true);
       try {
-        const data = await apiLogin(credentials.email, credentials.password);
+        const data = await authService.login({ email: credentials.email, password: credentials.password });
         handleAuthSuccess(data, credentials.email);
       } finally {
         setLoading(false);
@@ -92,7 +92,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (payload: { username: string; email: string; password: string }) => {
       setLoading(true);
       try {
-        const data = await apiRegister(payload.username, payload.email, payload.password);
+        const data = await authService.register({
+          username: payload.username,
+          email: payload.email,
+          password: payload.password,
+        });
         handleAuthSuccess(data, payload.email);
       } finally {
         setLoading(false);

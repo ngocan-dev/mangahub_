@@ -3,37 +3,32 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/context/AuthContext";
-import { mangaService, type Chapter, type Manga, type Review } from "@/services/manga.service";
+import {
+  mangaService,
+  type GetReviewsResponse,
+  type MangaDetail,
+} from "@/service/manga.service";
 
 interface PageProps {
   params: { id?: string };
 }
 
-const persistLibraryId = (id: number) => {
-  if (typeof window === "undefined") return;
-  const current = JSON.parse(localStorage.getItem("libraryIds") ?? "[]") as (string | number)[];
-  const numericId = Number(id);
-  if (!current.includes(numericId)) {
-    localStorage.setItem("libraryIds", JSON.stringify([...current, numericId]));
-  }
-};
-
 export default function MangaDetailPage({ params }: PageProps) {
   const mangaId = useMemo(() => Number(params.id), [params.id]);
   const { isAuthenticated } = useAuth();
-  const [manga, setManga] = useState<Manga | null>(null);
-  const [chapters, setChapters] = useState<Chapter[]>([]);
-  const [reviews, setReviews] = useState<Review[]>([]);
+  const [manga, setManga] = useState<MangaDetail | null>(null);
+  const [reviews, setReviews] = useState<GetReviewsResponse | null>(null);
   const [progress, setProgress] = useState<number>(0);
   const [status, setStatus] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [reviewComment, setReviewComment] = useState<string>("");
   const [reviewRating, setReviewRating] = useState<number>(8);
 
   const sortedChapters = useMemo(() => {
-    if (!Array.isArray(chapters) || chapters.length === 0) return [];
-    return [...chapters].sort((a, b) => (a.chapter_number ?? 0) - (b.chapter_number ?? 0));
-  }, [chapters]);
+    if (!manga?.chapters?.length) return [];
+    return [...manga.chapters].sort((a, b) => (a.number ?? 0) - (b.number ?? 0));
+  }, [manga?.chapters]);
 
   useEffect(() => {
     if (!Number.isFinite(mangaId) || mangaId <= 0) {
@@ -41,22 +36,23 @@ export default function MangaDetailPage({ params }: PageProps) {
       return;
     }
     setManga(null);
-    setChapters([]);
-    setReviews([]);
+    setReviews(null);
+    setLoading(true);
     const loadData = async () => {
       setError(null);
       try {
-        const [mangaDetail, chapterList, reviewList] = await Promise.all([
-          mangaService.getMangaById(mangaId),
-          mangaService.getChapters(mangaId),
+        const [mangaDetail, reviewList] = await Promise.all([
+          mangaService.getById(mangaId),
           mangaService.getReviews(mangaId),
         ]);
         setManga(mangaDetail);
-        setChapters(Array.isArray(chapterList) ? chapterList : []);
+        setProgress(mangaDetail.user_progress?.current_chapter ?? 0);
         setReviews(reviewList);
       } catch (err) {
         setError("Unable to load this manga right now. Please ensure the server is online.");
         console.error(err);
+      } finally {
+        setLoading(false);
       }
     };
     void loadData();
@@ -65,9 +61,10 @@ export default function MangaDetailPage({ params }: PageProps) {
   const handleAddToLibrary = async () => {
     if (!Number.isFinite(mangaId) || mangaId <= 0) return;
     setStatus(null);
+    setError(null);
     try {
-      persistLibraryId(mangaId);
-      setStatus("Added to your library!");
+      const response = await mangaService.addLibraryEntry(mangaId, { status: "reading", current_chapter: progress });
+      setStatus(response.message || "Added to your library!");
     } catch (err) {
       setError("Could not add to library. Please try again.");
       console.error(err);
@@ -77,8 +74,10 @@ export default function MangaDetailPage({ params }: PageProps) {
   const handleProgressUpdate = async () => {
     if (!Number.isFinite(mangaId) || mangaId <= 0) return;
     setStatus(null);
+    setError(null);
     try {
-      setStatus("Progress updated.");
+      const response = await mangaService.setProgress(mangaId, { current_chapter: progress });
+      setStatus(response.message || "Progress updated.");
     } catch (err) {
       setError("Could not update progress.");
       console.error(err);
@@ -88,7 +87,9 @@ export default function MangaDetailPage({ params }: PageProps) {
   const handleSubmitReview = async () => {
     if (!Number.isFinite(mangaId) || mangaId <= 0) return;
     setStatus(null);
+    setError(null);
     try {
+      await mangaService.submitReview(mangaId, { content: reviewComment, rating: reviewRating });
       setReviewComment("");
       setStatus("Review submitted!");
       const refreshed = await mangaService.getReviews(mangaId);
@@ -99,9 +100,18 @@ export default function MangaDetailPage({ params }: PageProps) {
     }
   };
 
-  if (!manga) {
-    return <p className="text-slate-300">{error ?? "Loading manga..."}</p>;
+  if (loading) {
+    return <p className="text-slate-300">Loading manga...</p>;
   }
+
+  if (!manga) {
+    return <p className="text-slate-300">{error ?? "Manga not found."}</p>;
+  }
+
+  const genres = (manga.genre ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
 
   return (
     <section className="space-y-6">
@@ -112,16 +122,16 @@ export default function MangaDetailPage({ params }: PageProps) {
             {manga.author ? <p className="text-sm text-slate-400">by {manga.author}</p> : null}
             <p className="mt-3 text-sm text-slate-300">{manga.description ?? "No description available."}</p>
           </div>
-          {manga.rating ? (
+          {manga.rating_point ? (
             <div className="rounded-lg bg-slate-800 px-4 py-2 text-center">
               <p className="text-xs text-slate-400">Community rating</p>
-              <p className="text-xl font-semibold text-amber-300">⭐ {manga.rating}</p>
+              <p className="text-xl font-semibold text-amber-300">⭐ {manga.rating_point}</p>
             </div>
           ) : null}
         </div>
-        {manga.genres?.length ? (
+        {genres.length ? (
           <div className="mt-4 flex flex-wrap gap-2">
-            {manga.genres.map((genre) => (
+            {genres.map((genre) => (
               <span key={genre} className="rounded-full bg-slate-800 px-3 py-1 text-xs text-slate-100">
                 {genre}
               </span>
@@ -133,11 +143,11 @@ export default function MangaDetailPage({ params }: PageProps) {
       <div className="grid gap-4 md:grid-cols-3">
         <div className="card md:col-span-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-white">Reading progress</h2>
-            <span className="text-sm text-slate-400">{progress}%</span>
-          </div>
-          <input
-            type="range"
+          <h2 className="text-lg font-semibold text-white">Reading progress</h2>
+          <span className="text-sm text-slate-400">{progress}%</span>
+        </div>
+        <input
+          type="range"
             min={0}
             max={100}
             value={progress}
@@ -171,18 +181,13 @@ export default function MangaDetailPage({ params }: PageProps) {
               {sortedChapters.map((chapter) => (
                 <li key={chapter.id} className="flex items-center justify-between rounded-lg bg-slate-800 px-3 py-2">
                   <span>
-                    {chapter.chapter_number ? `Ch. ${chapter.chapter_number} — ` : ""}
+                    {chapter.number ? `Ch. ${chapter.number} — ` : ""}
                     {chapter.title}
                   </span>
-                  {chapter.content_url ? (
-                    <a
-                      href={chapter.content_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs font-medium text-accent hover:text-secondary"
-                    >
-                      Read
-                    </a>
+                  {chapter.updated_at ? (
+                    <span className="text-xs text-slate-500">
+                      Updated {new Date(chapter.updated_at).toLocaleDateString()}
+                    </span>
                   ) : null}
                 </li>
               ))}
@@ -194,13 +199,14 @@ export default function MangaDetailPage({ params }: PageProps) {
         <div className="card space-y-3">
           <h3 className="text-lg font-semibold text-white">Reviews</h3>
           <div className="space-y-2 text-sm">
-            {reviews.length ? (
-              reviews.map((review) => (
-                <div key={review.id} className="rounded-lg bg-slate-800 p-3">
+            {reviews?.reviews?.length ? (
+              reviews.reviews.map((review) => (
+                <div key={review.review_id} className="rounded-lg bg-slate-800 p-3">
                   <div className="flex items-center justify-between text-xs text-slate-400">
                     <span>Rating: {review.rating}/10</span>
+                    <span>{review.username}</span>
                   </div>
-                  <p className="mt-1 text-slate-200">{review.comment}</p>
+                  <p className="mt-1 text-slate-200">{review.content}</p>
                 </div>
               ))
             ) : (

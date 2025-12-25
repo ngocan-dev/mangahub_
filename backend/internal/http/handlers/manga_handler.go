@@ -184,6 +184,30 @@ func (h *MangaHandler) GetDetails(c *gin.Context) {
 	c.JSON(http.StatusOK, detail)
 }
 
+// GetLibrary lists the authenticated user's library entries.
+func (h *MangaHandler) GetLibrary(c *gin.Context) {
+	userID, ok := RequireUserID(c)
+	if !ok {
+		return
+	}
+
+	resp, err := h.libraryService.GetLibrary(c.Request.Context(), userID)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, libraryservice.ErrDatabaseError) {
+			status = http.StatusInternalServerError
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+
+	if resp == nil {
+		resp = &domainlibrary.GetLibraryResponse{Entries: []domainlibrary.LibraryEntry{}}
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
 // AddToLibrary adds a manga to the authenticated user's library.
 func (h *MangaHandler) AddToLibrary(c *gin.Context) {
 	userID, ok := RequireUserID(c)

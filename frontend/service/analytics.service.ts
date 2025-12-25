@@ -1,23 +1,30 @@
 import { http } from "@/lib/http";
 
-export interface ReadingStatistic {
-  totalChaptersRead: number;
-  totalTimeMinutes?: number;
-  streakDays?: number;
+export interface ReadingSummary {
+  total_manga: number;
+  total_chapters_read: number;
+  reading_streak: number;
+  last_read_at?: string;
 }
 
 export interface ReadingAnalyticsPoint {
   date: string;
-  chaptersRead: number;
+  chapters_read: number;
 }
 
-async function getReadingStatistics(): Promise<ReadingStatistic> {
-  const { data } = await http.get<ReadingStatistic>("/statistics/reading");
+export interface ReadingAnalyticsResponse {
+  daily: ReadingAnalyticsPoint[];
+  weekly: ReadingAnalyticsPoint[];
+  monthly: ReadingAnalyticsPoint[];
+}
+
+async function getReadingStatistics(): Promise<ReadingSummary> {
+  const { data } = await http.get<ReadingSummary>("/statistics/reading");
   return data;
 }
 
-async function getReadingAnalytics(): Promise<ReadingAnalyticsPoint[]> {
-  const { data } = await http.get<ReadingAnalyticsPoint[]>("/analytics/reading");
+async function getReadingAnalytics(): Promise<ReadingAnalyticsResponse> {
+  const { data } = await http.get<ReadingAnalyticsResponse>("/analytics/reading");
   return data;
 }
 

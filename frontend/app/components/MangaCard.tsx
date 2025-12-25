@@ -11,6 +11,11 @@ interface MangaCardProps {
 }
 
 export default function MangaCard({ manga, onAddToLibrary, actionLabel }: MangaCardProps) {
+  const genres = (manga.genre ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
   return (
     <div className="card flex flex-col gap-3">
       <div className="flex items-start justify-between gap-3">
@@ -18,16 +23,16 @@ export default function MangaCard({ manga, onAddToLibrary, actionLabel }: MangaC
           <h3 className="text-lg font-semibold text-white">{manga.title}</h3>
           {manga.author ? <p className="text-sm text-slate-400">by {manga.author}</p> : null}
         </div>
-        {manga.rating ? (
-          <span className="rounded-full bg-slate-800 px-3 py-1 text-xs text-amber-300">⭐ {manga.rating}</span>
+        {manga.rating_point ? (
+          <span className="rounded-full bg-slate-800 px-3 py-1 text-xs text-amber-300">⭐ {manga.rating_point}</span>
         ) : null}
       </div>
       {manga.description ? (
         <p className="text-sm text-slate-300 max-h-24 overflow-hidden text-ellipsis">{manga.description}</p>
       ) : null}
-      {manga.genres?.length ? (
+      {genres.length ? (
         <div className="flex flex-wrap gap-2">
-          {manga.genres.map((genre) => (
+          {genres.map((genre) => (
             <span key={genre} className="rounded-full bg-slate-800 px-2 py-1 text-xs text-slate-200">
               {genre}
             </span>

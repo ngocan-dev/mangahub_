@@ -1,113 +1,158 @@
-import { ENV } from "@/config/env";
-
-const API_BASE_URL = ENV.API_BASE_URL;
-
-const getAuthToken = (): string | null => {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("token");
-};
-
-interface ApiRequestOptions extends RequestInit {
-  skipAuth?: boolean;
-}
-
-async function request<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
-  const { skipAuth, headers, ...rest } = options;
-  const token = skipAuth ? null : getAuthToken();
-  const mergedHeaders: HeadersInit = {
-    "Content-Type": "application/json",
-    ...(headers ?? {}),
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...rest,
-    headers: mergedHeaders,
-  });
-
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || response.statusText);
-  }
-
-  return (await response.json()) as T;
-}
-
-export interface User {
-  id: number;
-  username: string;
-  email: string;
-}
-
-export interface AuthResponse {
-  token: string;
-  user: User;
-}
+import { http } from "@/lib/http";
 
 export interface Manga {
   id: number;
+  slug: string;
+  name: string;
   title: string;
+  author: string;
+  artist?: string;
+  genre: string;
+  status: string;
   description: string;
-  cover_url: string;
-  rating: number;
-  views: number;
-  status: "ongoing" | "completed";
-  genres: string[];
+  image: string;
+  rating_point: number;
+  views?: number;
+  relevance_score?: number;
 }
 
-export interface Chapter {
+export interface ChapterSummary {
   id: number;
   manga_id: number;
-  chapter_number: number;
+  number: number;
   title: string;
-  content_url: string;
+  updated_at?: string;
+}
+
+export interface LibraryStatus {
+  status: string;
+  started_at?: string;
+  completed_at?: string;
+}
+
+export interface UserProgress {
+  current_chapter: number;
+  current_chapter_id?: number;
+  last_read_at: string;
+}
+
+export interface MangaDetail extends Manga {
+  chapter_count: number;
+  chapters?: ChapterSummary[];
+  library_status?: LibraryStatus;
+  user_progress?: UserProgress;
+}
+
+export interface SearchResponse {
+  results: Manga[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
+
+export interface LibraryEntry {
+  manga_id: number;
+  title: string;
+  cover_image: string;
+  status: string;
+  started_at?: string;
+  completed_at?: string;
+  last_updated_at: string;
+}
+
+export interface GetLibraryResponse {
+  entries: LibraryEntry[];
 }
 
 export interface Review {
-  id: number;
-  manga_id?: number;
+  review_id: number;
+  user_id: number;
+  username: string;
+  manga_id: number;
   rating: number;
-  comment?: string;
+  content: string;
+  created_at: string;
+  updated_at?: string;
 }
 
-export async function login(email: string, password: string): Promise<AuthResponse> {
-  return request<AuthResponse>("/login", {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
-    skipAuth: true,
-  });
+export interface GetReviewsResponse {
+  reviews: Review[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+  average_rating: number;
+  total_reviews: number;
 }
 
-export async function register(username: string, email: string, password: string): Promise<AuthResponse> {
-  return request<AuthResponse>("/register", {
-    method: "POST",
-    body: JSON.stringify({ username, email, password }),
-    skipAuth: true,
-  });
+export interface CreateReviewRequest {
+  rating: number;
+  content: string;
 }
 
-export async function getPopularManga(): Promise<Manga[]> {
-  return request<Manga[]>("/manga/popular", { method: "GET" });
+export interface CreateReviewResponse {
+  message: string;
+  review?: Review;
 }
 
-export async function searchManga(keyword: string): Promise<Manga[]> {
-  const query = new URLSearchParams({ q: keyword });
-  return request<Manga[]>(`/manga/search?${query.toString()}`, { method: "GET" });
+export interface AddToLibraryRequest {
+  status: string;
+  current_chapter?: number;
 }
 
-export async function getMangaById(id: number): Promise<Manga> {
-  return request<Manga>(`/manga/${id}`, { method: "GET" });
+export interface AddToLibraryResponse {
+  message: string;
+  library_status?: LibraryStatus;
+  user_progress?: UserProgress;
 }
 
-export async function getChaptersByMangaId(id: number): Promise<Chapter[]> {
-  return request<Chapter[]>(`/chapters/${id}`, { method: "GET" });
+export interface UpdateProgressRequest {
+  current_chapter: number;
 }
 
-export async function getReviewsByMangaId(id: number): Promise<Review[]> {
-  try {
-    return await request<Review[]>(`/manga/${id}/reviews`, { method: "GET" });
-  } catch (error) {
-    console.error("Failed to load reviews", error);
-    return [];
-  }
+export interface UpdateProgressResponse {
+  message: string;
+  user_progress?: UserProgress;
+  broadcasted: boolean;
+}
+
+export async function getPopularManga(limit = 10): Promise<Manga[]> {
+  const { data } = await http.get<Manga[]>("/manga/popular", { params: { limit } });
+  return data;
+}
+
+export async function searchManga(keyword: string): Promise<SearchResponse> {
+  const { data } = await http.get<SearchResponse>("/manga/search", { params: { q: keyword } });
+  return data;
+}
+
+export async function getMangaById(id: number): Promise<MangaDetail> {
+  const { data } = await http.get<MangaDetail>(`/manga/${id}`);
+  return data;
+}
+
+export async function addToLibrary(id: number, payload: AddToLibraryRequest): Promise<AddToLibraryResponse> {
+  const { data } = await http.post<AddToLibraryResponse>(`/manga/${id}/library`, payload);
+  return data;
+}
+
+export async function updateProgress(id: number, payload: UpdateProgressRequest): Promise<UpdateProgressResponse> {
+  const { data } = await http.put<UpdateProgressResponse>(`/manga/${id}/progress`, payload);
+  return data;
+}
+
+export async function getReviewsByMangaId(id: number, page = 1, limit = 10): Promise<GetReviewsResponse> {
+  const { data } = await http.get<GetReviewsResponse>(`/manga/${id}/reviews`, { params: { page, limit } });
+  return data;
+}
+
+export async function createReview(id: number, payload: CreateReviewRequest): Promise<CreateReviewResponse> {
+  const { data } = await http.post<CreateReviewResponse>(`/manga/${id}/reviews`, payload);
+  return data;
+}
+
+export async function getLibrary(): Promise<GetLibraryResponse> {
+  const { data } = await http.get<GetLibraryResponse>("/library");
+  return data;
 }
