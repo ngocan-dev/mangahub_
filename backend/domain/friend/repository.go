@@ -5,16 +5,22 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
+	"sync"
 )
 
 // Repository handles friend-related persistence
 type Repository struct {
-	db *sql.DB
+	db                *sql.DB
+	friendIDColumn    string
+	friendHasStatus   bool
+	friendSchemaOnce  sync.Once
+	friendSchemaError error
 }
 
 // NewRepository builds a friend repository
 func NewRepository(db *sql.DB) *Repository {
-	return &Repository{db: db}
+	return &Repository{db: db, friendIDColumn: "friend_id"}
 }
 
 // FindUsersByQuery searches users by username or email (case-insensitive) excluding self and existing friends.
@@ -77,10 +83,22 @@ func (r *Repository) FindUserByID(ctx context.Context, id int64) (*UserSummary, 
 
 // AreFriends returns true when two users have a bidirectional link
 func (r *Repository) AreFriends(ctx context.Context, userID, friendID int64) (bool, error) {
+	if err := r.ensureFriendSchema(ctx); err != nil {
+		return false, err
+	}
+
+	statusFilter := ""
+	if r.friendHasStatus {
+		statusFilter = " AND status = 'accepted'"
+	}
+
 	var count int
-	if err := r.db.QueryRowContext(ctx, `
-        SELECT COUNT(*) FROM friends WHERE user_id = ? AND friend_id = ?
-    `, userID, friendID).Scan(&count); err != nil {
+	query := fmt.Sprintf(`
+        SELECT COUNT(*) FROM friends
+        WHERE (user_id = ? AND %s = ?%s) OR (%s = ? AND user_id = ?%s)
+    `, r.friendIDColumn, statusFilter, r.friendIDColumn, statusFilter)
+
+	if err := r.db.QueryRowContext(ctx, query, userID, friendID, friendID, userID).Scan(&count); err != nil {
 		return false, err
 	}
 	return count > 0, nil
@@ -88,14 +106,19 @@ func (r *Repository) AreFriends(ctx context.Context, userID, friendID int64) (bo
 
 // HasPendingRequest checks for an active pending request between users.
 func (r *Repository) HasPendingRequest(ctx context.Context, fromUserID, toUserID int64) (bool, error) {
+	if err := r.ensureFriendSchema(ctx); err != nil {
+		return false, err
+	}
+
 	var count int
-	if err := r.db.QueryRowContext(ctx, `
-        SELECT COUNT(*) FROM friend_requests
+	query := fmt.Sprintf(`
+        SELECT COUNT(*) FROM friends
         WHERE status = 'pending' AND (
-            (from_user_id = ? AND to_user_id = ?) OR
-            (from_user_id = ? AND to_user_id = ?)
+            (user_id = ? AND %s = ?) OR
+            (user_id = ? AND %s = ?)
         )
-    `, fromUserID, toUserID, toUserID, fromUserID).Scan(&count); err != nil {
+    `, r.friendIDColumn, r.friendIDColumn)
+	if err := r.db.QueryRowContext(ctx, query, fromUserID, toUserID, toUserID, fromUserID).Scan(&count); err != nil {
 		return false, err
 	}
 	return count > 0, nil
@@ -103,10 +126,16 @@ func (r *Repository) HasPendingRequest(ctx context.Context, fromUserID, toUserID
 
 // CreateFriendRequest inserts a pending friendship request
 func (r *Repository) CreateFriendRequest(ctx context.Context, requesterID, targetID int64) (*FriendRequest, error) {
-	res, err := r.db.ExecContext(ctx, `
-        INSERT INTO friend_requests (from_user_id, to_user_id, status)
+	if err := r.ensureFriendSchema(ctx); err != nil {
+		return nil, err
+	}
+
+	insertStmt := fmt.Sprintf(`
+        INSERT INTO friends (user_id, %s, status)
         VALUES (?, ?, 'pending')
-    `, requesterID, targetID)
+        ON DUPLICATE KEY UPDATE status = VALUES(status)
+    `, r.friendIDColumn)
+	res, err := r.db.ExecContext(ctx, insertStmt, requesterID, targetID)
 	if err != nil {
 		return nil, err
 	}
@@ -119,10 +148,14 @@ func (r *Repository) CreateFriendRequest(ctx context.Context, requesterID, targe
 
 // GetFriendRequestByID fetches a friend request row.
 func (r *Repository) GetFriendRequestByID(ctx context.Context, id int64) (*FriendRequest, error) {
+	if err := r.ensureFriendSchema(ctx); err != nil {
+		return nil, err
+	}
+
 	row := r.db.QueryRowContext(ctx, `
-        SELECT fr.id, fr.from_user_id, fr.to_user_id, fr.status, fr.created_at, u.username
-        FROM friend_requests fr
-        JOIN users u ON u.id = fr.from_user_id
+        SELECT fr.id, fr.user_id, fr.`+r.friendIDColumn+`, fr.status, fr.created_at, u.username
+        FROM friends fr
+        JOIN users u ON u.id = fr.user_id
         WHERE fr.id = ?
     `, id)
 	var fr FriendRequest
@@ -137,8 +170,12 @@ func (r *Repository) GetFriendRequestByID(ctx context.Context, id int64) (*Frien
 
 // UpdateFriendRequestStatus updates a request status.
 func (r *Repository) UpdateFriendRequestStatus(ctx context.Context, id int64, status string) error {
+	if err := r.ensureFriendSchema(ctx); err != nil {
+		return err
+	}
+
 	_, err := r.db.ExecContext(ctx, `
-        UPDATE friend_requests
+        UPDATE friends
         SET status = ?
         WHERE id = ?
     `, status, id)
@@ -147,6 +184,10 @@ func (r *Repository) UpdateFriendRequestStatus(ctx context.Context, id int64, st
 
 // CreateFriendshipBidirectional stores two rows (user->friend and friend->user).
 func (r *Repository) CreateFriendshipBidirectional(ctx context.Context, userID, friendID int64) error {
+	if err := r.ensureFriendSchema(ctx); err != nil {
+		return err
+	}
+
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -159,7 +200,12 @@ func (r *Repository) CreateFriendshipBidirectional(ctx context.Context, userID, 
 		}
 	}()
 
-	insertStmt := `INSERT IGNORE INTO friends (user_id, friend_id) VALUES (?, ?)`
+	insertStmt := fmt.Sprintf(`
+        INSERT INTO friends (user_id, %s, status)
+        VALUES (?, ?, 'accepted')
+        ON DUPLICATE KEY UPDATE status = VALUES(status)
+    `, r.friendIDColumn)
+
 	if _, err = tx.ExecContext(ctx, insertStmt, userID, friendID); err != nil {
 		return err
 	}
@@ -171,36 +217,52 @@ func (r *Repository) CreateFriendshipBidirectional(ctx context.Context, userID, 
 
 // ListFriends returns accepted friends with basic profile data.
 func (r *Repository) ListFriends(ctx context.Context, userID int64) ([]UserSummary, error) {
-	rows, err := r.db.QueryContext(ctx, `
+	if err := r.ensureFriendSchema(ctx); err != nil {
+		return nil, err
+	}
+
+	statusFilter := ""
+	if r.friendHasStatus {
+		statusFilter = " AND status = 'accepted'"
+	}
+
+	query := fmt.Sprintf(`
         SELECT u.id, u.username, u.email, COALESCE(u.avatar_url, '') as avatar
-        FROM friends f
-        JOIN users u ON u.id = f.friend_id
-        WHERE f.user_id = ?
+        FROM (
+            SELECT %[1]s AS friend_id FROM friends WHERE user_id = ?%[2]s
+            UNION
+            SELECT user_id AS friend_id FROM friends WHERE %[1]s = ?%[2]s
+        ) rel
+        JOIN users u ON u.id = rel.friend_id
         ORDER BY u.username
-    `, userID)
+    `, r.friendIDColumn, statusFilter)
+
+	rows, err := r.db.QueryContext(ctx, query, userID, userID)
 	if err != nil {
+		if r.isUnknownColumnError(err, r.friendIDColumn) {
+			return nil, fmt.Errorf("friends table is missing expected column %q", r.friendIDColumn)
+		}
 		return nil, err
 	}
 	defer rows.Close()
 
-	var friends []UserSummary
-	for rows.Next() {
-		var u UserSummary
-		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.AvatarURL); err != nil {
-			return nil, err
-		}
-		friends = append(friends, u)
-	}
-	return friends, rows.Err()
+	return scanUserSummaries(rows)
 }
 
 // CountMutualFriendships is a helper used by tests/debugging.
 func (r *Repository) CountMutualFriendships(ctx context.Context, userID, friendID int64) (int, error) {
+	if err := r.ensureFriendSchema(ctx); err != nil {
+		return 0, err
+	}
+
 	var total int
-	err := r.db.QueryRowContext(ctx, `
+	query := fmt.Sprintf(`
         SELECT COUNT(*) FROM friends
-        WHERE (user_id = ? AND friend_id = ?) OR (user_id = ? AND friend_id = ?)
-    `, userID, friendID, friendID, userID).Scan(&total)
+        WHERE ((user_id = ? AND %s = ?) OR (user_id = ? AND %s = ?))`, r.friendIDColumn, r.friendIDColumn)
+	if r.friendHasStatus {
+		query += " AND status = 'accepted'"
+	}
+	err := r.db.QueryRowContext(ctx, query, userID, friendID, friendID, userID).Scan(&total)
 	if err != nil {
 		return 0, fmt.Errorf("count mutual friendships: %w", err)
 	}
@@ -209,11 +271,15 @@ func (r *Repository) CountMutualFriendships(ctx context.Context, userID, friendI
 
 // ListIncomingRequests returns pending requests sent to the given user.
 func (r *Repository) ListIncomingRequests(ctx context.Context, userID int64) ([]FriendRequest, error) {
+	if err := r.ensureFriendSchema(ctx); err != nil {
+		return nil, err
+	}
+
 	rows, err := r.db.QueryContext(ctx, `
-        SELECT fr.id, fr.from_user_id, fr.to_user_id, fr.status, fr.created_at, u.username
-        FROM friend_requests fr
-        JOIN users u ON u.id = fr.from_user_id
-        WHERE fr.to_user_id = ? AND fr.status = 'pending'
+        SELECT fr.id, fr.user_id, fr.`+r.friendIDColumn+`, fr.status, fr.created_at, u.username
+        FROM friends fr
+        JOIN users u ON u.id = fr.user_id
+        WHERE fr.`+r.friendIDColumn+` = ? AND fr.status = 'pending'
         ORDER BY fr.created_at DESC
     `, userID)
 	if err != nil {
@@ -230,4 +296,73 @@ func (r *Repository) ListIncomingRequests(ctx context.Context, userID int64) ([]
 		requests = append(requests, fr)
 	}
 	return requests, rows.Err()
+}
+
+// FindFriendshipBetween returns a friendship row (any status) between two users if it exists.
+func (r *Repository) FindFriendshipBetween(ctx context.Context, userID, friendID int64) (*Friendship, error) {
+	if err := r.ensureFriendSchema(ctx); err != nil {
+		return nil, err
+	}
+
+	query := fmt.Sprintf(`
+        SELECT id, user_id, %s, status, created_at
+        FROM friends
+        WHERE (user_id = ? AND %s = ?) OR (user_id = ? AND %s = ?)
+        LIMIT 1
+    `, r.friendIDColumn, r.friendIDColumn, r.friendIDColumn)
+
+	row := r.db.QueryRowContext(ctx, query, userID, friendID, friendID, userID)
+	var fr Friendship
+	if err := row.Scan(&fr.ID, &fr.UserID, &fr.FriendID, &fr.Status, &fr.CreatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &fr, nil
+}
+
+func (r *Repository) ensureFriendSchema(ctx context.Context) error {
+	r.friendSchemaOnce.Do(func() {
+		// Detect the friend ID column (friend_id vs friend_user_id)
+		testQuery := fmt.Sprintf(`SELECT %s FROM friends LIMIT 0`, r.friendIDColumn)
+		if _, err := r.db.ExecContext(ctx, testQuery); err != nil {
+			if r.isUnknownColumnError(err, r.friendIDColumn) {
+				r.friendIDColumn = "friend_user_id"
+			} else {
+				r.friendSchemaError = err
+				return
+			}
+		}
+
+		// Detect optional status column to filter accepted friends
+		if _, err := r.db.ExecContext(ctx, `SELECT status FROM friends LIMIT 0`); err == nil {
+			r.friendHasStatus = true
+		}
+	})
+
+	return r.friendSchemaError
+}
+
+func (r *Repository) isUnknownColumnError(err error, column string) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	col := strings.ToLower(column)
+	return (strings.Contains(msg, "no such column") ||
+		strings.Contains(msg, "unknown column") ||
+		strings.Contains(msg, "does not exist")) && strings.Contains(msg, col)
+}
+
+func scanUserSummaries(rows *sql.Rows) ([]UserSummary, error) {
+	var friends []UserSummary
+	for rows.Next() {
+		var u UserSummary
+		if err := rows.Scan(&u.ID, &u.Username, &u.Email, &u.AvatarURL); err != nil {
+			return nil, err
+		}
+		friends = append(friends, u)
+	}
+	return friends, rows.Err()
 }
