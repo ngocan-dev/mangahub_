@@ -123,8 +123,13 @@ func (h *FriendHandler) AcceptRequest(c *gin.Context) {
 		RequestID int64 `json:"request_id" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "request_id is required"})
-		return
+		pathID := c.Param("id")
+		if parsed, errConv := strconv.ParseInt(pathID, 10, 64); errConv == nil && parsed > 0 {
+			req.RequestID = parsed
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "request_id is required"})
+			return
+		}
 	}
 
 	accepterUsername, _ := c.Get("username")
@@ -159,8 +164,13 @@ func (h *FriendHandler) RejectRequest(c *gin.Context) {
 		RequestID int64 `json:"request_id" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "request_id is required"})
-		return
+		pathID := c.Param("id")
+		if parsed, errConv := strconv.ParseInt(pathID, 10, 64); errConv == nil && parsed > 0 {
+			req.RequestID = parsed
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "request_id is required"})
+			return
+		}
 	}
 	if err := h.service.RejectFriendRequest(c.Request.Context(), userID, req.RequestID); err != nil {
 		if errors.Is(err, friend.ErrNoPendingRequest) {

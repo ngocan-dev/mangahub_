@@ -7,7 +7,7 @@ type UserSummary struct {
 	ID        int64  `json:"id"`
 	Username  string `json:"username"`
 	Email     string `json:"email,omitempty"`
-	AvatarURL string `json:"avatar,omitempty"`
+	AvatarURL string `json:"avatar_url,omitempty"`
 }
 
 // Friendship represents a friend relationship or request

@@ -1,21 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { ENV } from "@/config/env";
-import { useAuth } from "@/context/AuthContext";
 import ProtectedRoute from "../components/ProtectedRoute";
+import { useAuth } from "@/context/AuthContext";
+import { chatService, type ChatMessage, type Conversation } from "@/service/chat.service";
 import { friendService, type FriendRequest, type UserSummary } from "@/service/friend.service";
 
-type DirectMessage = {
-  from: number;
-  to: number;
-  message: string;
-  timestamp: number;
-};
-
 export default function FriendsPage() {
-  const { token } = useAuth();
+  const { user } = useAuth();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<UserSummary[]>([]);
   const [friends, setFriends] = useState<UserSummary[]>([]);
@@ -23,27 +16,23 @@ export default function FriendsPage() {
   const [requestMessage, setRequestMessage] = useState<string | null>(null);
   const [requestId, setRequestId] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
 
-  // Chat
   const [selectedFriend, setSelectedFriend] = useState<UserSummary | null>(null);
-  const [chatMessages, setChatMessages] = useState<DirectMessage[]>([]);
+  const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatError, setChatError] = useState<string | null>(null);
 
-  const socketRef = useRef<WebSocket | null>(null);
-  const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const presenceSocketRef = useRef<WebSocket | null>(null);
-  const presenceReconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [onlineUserIds, setOnlineUserIds] = useState<number[]>([]);
-
-  // ------------------------
-  // Loaders
-  // ------------------------
+  /* ------------------------ */
+  /* Loaders */
+  /* ------------------------ */
 
   const loadFriends = useCallback(async () => {
     try {
       const data = await friendService.listFriends();
-      setFriends(data);
+      const unique = Array.from(new Map(data.map((f) => [f.id, f])).values());
+      setFriends(unique);
     } catch (err) {
       console.error(err);
     }
@@ -58,9 +47,45 @@ export default function FriendsPage() {
     }
   }, []);
 
-  // ------------------------
-  // Search
-  // ------------------------
+  const loadConversations = useCallback(async () => {
+    try {
+      const data = await chatService.getConversations();
+      setConversations(data);
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
+
+  /* ------------------------ */
+  /* Derived data */
+  /* ------------------------ */
+
+  const roomByFriend = useMemo(() => {
+    const map = new Map<number, number>();
+    conversations.forEach((conv) => {
+      if (conv.room_id) map.set(conv.friend.id, conv.room_id);
+    });
+    return map;
+  }, [conversations]);
+
+  const lastMessageByFriend = useMemo(() => {
+    const map = new Map<number, ChatMessage | undefined>();
+    conversations.forEach((conv) => {
+      map.set(conv.friend.id, conv.last_message);
+    });
+    return map;
+  }, [conversations]);
+
+  const acceptedFriends = useMemo(() => {
+    const map = new Map<number, UserSummary>();
+    friends.forEach((f) => map.set(f.id, f));
+    conversations.forEach((c) => map.set(c.friend.id, c.friend));
+    return Array.from(map.values()).filter((f) => f.id !== user?.id);
+  }, [conversations, friends, user?.id]);
+
+  /* ------------------------ */
+  /* Search */
+  /* ------------------------ */
 
   const handleSearch = async () => {
     setError(null);
@@ -84,9 +109,9 @@ export default function FriendsPage() {
     }
   };
 
-  // ------------------------
-  // Accept / Reject (CÁCH A – CHUẨN REACT)
-  // ------------------------
+  /* ------------------------ */
+  /* Accept / Reject */
+  /* ------------------------ */
 
   const handleAcceptRequest = async (id: number) => {
     setError(null);
@@ -96,6 +121,7 @@ export default function FriendsPage() {
       setRequestId("");
       await loadFriends();
       await loadPendingRequests();
+      await loadConversations();
     } catch (err) {
       setError("Unable to accept request.");
       console.error(err);
@@ -127,267 +153,254 @@ export default function FriendsPage() {
     await handleRejectRequest(id);
   };
 
-  // ------------------------
-  // Chat (WS – chỉ dùng khi chat)
-  // ------------------------
-  const buildWSUrl = useCallback((path: string) => {
-    const wsBase = ENV.API_BASE_URL.replace(/^http/i, "ws");
-    const base = wsBase.endsWith("/") ? wsBase : `${wsBase}/`;
-    return new URL(path, base);
-  }, []);
+  /* ------------------------ */
+  /* Chat */
+  /* ------------------------ */
 
-  const disconnectSocket = useCallback(() => {
-    if (reconnectRef.current) clearTimeout(reconnectRef.current);
-    reconnectRef.current = null;
+  const selectFriend = useCallback(
+    async (friend: UserSummary) => {
+      setSelectedFriend(friend);
+      setChatError(null);
+      const roomId = roomByFriend.get(friend.id) ?? null;
+      setSelectedRoomId(roomId);
 
-    if (socketRef.current) {
-      socketRef.current.close();
-      socketRef.current = null;
-    }
-  }, []);
+      if (roomId) {
+        try {
+          const msgs = await chatService.getRoomMessages(roomId);
+          setChatMessages(msgs);
+        } catch (err) {
+          setChatError("Unable to load messages");
+          console.error(err);
+          setChatMessages([]);
+        }
+      } else {
+        setChatMessages([]);
+      }
+    },
+    [roomByFriend],
+  );
 
-  const connectChat = (friend: UserSummary) => {
-    disconnectSocket();
-    setSelectedFriend(friend);
-    setChatMessages([]);
-    setChatError(null);
-
-    if (!token) {
-      setChatError("Authentication required to start chat.");
+  const handleSendChatMessage = async () => {
+    if (!selectedFriend) {
+      setChatError("Select a friend to chat with.");
       return;
     }
 
-    const wsUrl = buildWSUrl("/ws/chat");
-    wsUrl.searchParams.set("friend_id", String(friend.id));
-    wsUrl.searchParams.set("token", token);
-
-    const ws = new WebSocket(wsUrl.toString());
-    socketRef.current = ws;
-
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data) as DirectMessage;
-        setChatMessages((prev) => [...prev, msg]);
-      } catch (e) {
-        console.error(e);
-      }
-    };
-
-    ws.onclose = (event) => {
-      if (event.code === 1000 || !token) {
-        return;
-      }
-      reconnectRef.current = setTimeout(() => connectChat(friend), 1500);
-    };
-
-    ws.onerror = () => {
-      setChatError("Chat connection error");
-    };
-  };
-
-  const sendChatMessage = () => {
-    if (!socketRef.current || !selectedFriend) return;
     const trimmed = chatInput.trim();
     if (!trimmed) return;
 
     try {
-      socketRef.current.send(JSON.stringify({ message: trimmed }));
+      const { room, message } = await chatService.sendMessage(
+        selectedFriend.id,
+        trimmed,
+      );
+      setSelectedRoomId(room.id);
+      setChatMessages((prev) => [...prev, message]);
       setChatInput("");
+      setConversations((prev) => {
+        const updated = [...prev];
+        const idx = updated.findIndex((c) => c.friend.id === selectedFriend.id);
+        const nextConv: Conversation = {
+          friend: selectedFriend,
+          room_id: room.id,
+          last_message: message,
+        };
+        if (idx >= 0) {
+          updated[idx] = { ...updated[idx], ...nextConv };
+        } else {
+          updated.unshift(nextConv);
+        }
+        return updated;
+      });
     } catch (err) {
       setChatError("Unable to send message");
       console.error(err);
     }
   };
 
-  // ------------------------
-  // Init
-  // ------------------------
-  const disconnectPresence = useCallback(() => {
-    if (presenceReconnectRef.current) clearTimeout(presenceReconnectRef.current);
-    presenceReconnectRef.current = null;
-
-    if (presenceSocketRef.current) {
-      presenceSocketRef.current.close();
-      presenceSocketRef.current = null;
-    }
-  }, []);
-
-  const connectPresence = useCallback(() => {
-    disconnectPresence();
-
-    if (!token) {
-      setOnlineUserIds([]);
-      return;
-    }
-
-    const wsUrl = buildWSUrl("/ws/chat");
-    wsUrl.searchParams.set("token", token);
-
-    const ws = new WebSocket(wsUrl.toString());
-    presenceSocketRef.current = ws;
-
-    ws.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data) as { type?: string; online_user_ids?: number[] };
-        if (payload.type === "presence:update" && Array.isArray(payload.online_user_ids)) {
-          setOnlineUserIds(payload.online_user_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)));
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-
-    ws.onclose = (event) => {
-      if (event.code === 1000 || !token) return;
-      presenceReconnectRef.current = setTimeout(() => connectPresence(), 1500);
-    };
-
-    ws.onerror = () => {
-      setOnlineUserIds([]);
-    };
-  }, [buildWSUrl, disconnectPresence, token]);
-
-  const onlineFriendIds = useMemo(() => new Set(onlineUserIds), [onlineUserIds]);
-  const onlineFriends = useMemo(
-    () => friends.filter((f) => onlineFriendIds.has(f.id)),
-    [friends, onlineFriendIds],
-  );
-
+  /* ------------------------ */
+  /* Init */
+  /* ------------------------ */
   useEffect(() => {
     void loadFriends();
     void loadPendingRequests();
-    return () => {
-      disconnectSocket();
-      disconnectPresence();
-    };
-  }, [disconnectPresence, disconnectSocket, loadFriends, loadPendingRequests]);
+    void loadConversations();
+  }, [loadConversations, loadFriends, loadPendingRequests]);
 
-  useEffect(() => {
-    connectPresence();
-    return () => disconnectPresence();
-  }, [connectPresence, disconnectPresence]);
+  /* ------------------------ */
+  /* Render helpers */
+  /* ------------------------ */
 
-  // ------------------------
-  // Render
-  // ------------------------
+  const renderLastMessage = (friend: UserSummary) => {
+    const last = lastMessageByFriend.get(friend.id);
+    if (!last) return <span className="text-xs text-gray-400">No messages yet</span>;
+    const authorLabel = last.user_id === friend.id ? friend.username : "You";
+    return (
+      <span className="truncate text-xs text-gray-300">
+        {authorLabel}: {last.content}
+      </span>
+    );
+  };
 
   return (
     <ProtectedRoute>
       <section className="space-y-4">
         <h1 className="text-2xl font-semibold text-white">Friends</h1>
 
-        {/* Search */}
-        <div className="card space-y-2">
-          <input
-            placeholder="Search users"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-          />
-          <button className="btn-primary" onClick={handleSearch}>
-            Search
-          </button>
-
-          {results.map((user) => (
-            <div key={user.id} className="flex justify-between">
-              <span>{user.username}</span>
-              <button onClick={() => handleSendRequest(user.id)}>Add</button>
-            </div>
-          ))}
-        </div>
-
-        {/* Pending */}
-        <div className="card space-y-2">
-          <input
-            placeholder="Request ID"
-            value={requestId}
-            onChange={(e) => setRequestId(e.target.value)}
-          />
-
-          <button className="btn-primary w-full" onClick={handleAcceptByInput}>
-            Accept request
-          </button>
-
-          <button className="btn-secondary w-full" onClick={handleRejectByInput}>
-            Reject request
-          </button>
-
-          {pendingRequests.map((req) => (
-            <div key={req.id} className="flex justify-between">
-              <span>#{req.id} from {req.from_username}</span>
-              <div className="flex gap-2">
-                <button onClick={() => handleAcceptRequest(req.id)}>Accept</button>
-                <button onClick={() => handleRejectRequest(req.id)}>Reject</button>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Friends */}
-        <div className="card space-y-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Friends</h2>
-            <span className="text-sm text-gray-300">
-              Online {onlineFriends.length}/{friends.length}
-            </span>
-          </div>
-          {friends.map((f) => (
-            <div key={f.id} className="flex justify-between">
+        <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
+          {/* Left column */}
+          <div className="space-y-4">
+            {/* Search */}
+            <div className="card space-y-3">
               <div className="flex items-center gap-2">
-                <span
-                  aria-label={onlineFriendIds.has(f.id) ? "Online" : "Offline"}
-                  className={`h-2 w-2 rounded-full ${onlineFriendIds.has(f.id) ? "bg-green-400" : "bg-gray-500"}`}
+                <input
+                  placeholder="Search users"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                 />
-                <span>{f.username}</span>
+                <button className="btn-primary" onClick={handleSearch}>
+                  Search
+                </button>
               </div>
-              <button onClick={() => connectChat(f)}>Chat</button>
-            </div>
-          ))}
-        </div>
 
-        {/* Online friends */}
-        <div className="card space-y-2">
-          <h2 className="text-lg font-semibold">Online friends (WebSocket)</h2>
-          {onlineFriends.length === 0 ? (
-            <p className="text-sm text-gray-300">No friends online right now.</p>
-          ) : (
-            onlineFriends.map((f) => (
-              <div key={f.id} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-green-400" aria-hidden="true" />
-                  <span>{f.username}</span>
-                </div>
-                <button onClick={() => connectChat(f)}>Chat</button>
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* Chat */}
-        {selectedFriend && (
-          <div className="card space-y-2">
-            <h2>Chat with {selectedFriend.username}</h2>
-
-            <div className="space-y-1">
-              {chatMessages.map((m, i) => (
-                <div key={i}>
-                  <strong>{m.from === selectedFriend.id ? selectedFriend.username : "You"}:</strong>{" "}
-                  {m.message}
+              {results.map((user) => (
+                <div key={user.id} className="flex items-center justify-between rounded bg-gray-800/40 px-3 py-2">
+                  <div>
+                    <p className="font-medium text-white">{user.username}</p>
+                    <p className="text-xs text-gray-400">{user.email}</p>
+                  </div>
+                  <button className="btn-secondary" onClick={() => handleSendRequest(user.id)}>
+                    Add
+                  </button>
                 </div>
               ))}
             </div>
 
-            <input
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && sendChatMessage()}
-            />
+            {/* Pending */}
+            <div className="card space-y-3">
+              <h2 className="text-lg font-semibold">Pending requests</h2>
+              <div className="flex gap-2">
+                <input
+                  placeholder="Request ID"
+                  value={requestId}
+                  onChange={(e) => setRequestId(e.target.value)}
+                />
+                <button className="btn-primary w-24" onClick={handleAcceptByInput}>
+                  Accept
+                </button>
+                <button className="btn-secondary w-24" onClick={handleRejectByInput}>
+                  Reject
+                </button>
+              </div>
 
-            <button onClick={sendChatMessage}>Send</button>
+              {pendingRequests.length === 0 ? (
+                <p className="text-sm text-gray-400">No pending requests.</p>
+              ) : (
+                pendingRequests.map((req) => (
+                  <div key={req.id} className="flex items-center justify-between rounded bg-gray-800/40 px-3 py-2">
+                    <div>
+                      <p className="font-medium text-white">#{req.id} from {req.from_username}</p>
+                      <p className="text-xs text-gray-400">{new Date(req.created_at).toLocaleString()}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button className="btn-primary" onClick={() => handleAcceptRequest(req.id)}>
+                        Accept
+                      </button>
+                      <button className="btn-secondary" onClick={() => handleRejectRequest(req.id)}>
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
 
-            {chatError && <p className="text-red-400">{chatError}</p>}
+            {/* Friends */}
+            <div className="card space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Friends</h2>
+                <span className="text-xs text-gray-400">{acceptedFriends.length} total</span>
+              </div>
+              {acceptedFriends.length === 0 ? (
+                <p className="text-sm text-gray-400">No friends yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {acceptedFriends.map((f) => (
+                    <button
+                      key={f.id}
+                      className={`w-full rounded px-3 py-2 text-left transition ${
+                        selectedFriend?.id === f.id ? "bg-indigo-600/60" : "bg-gray-800/60 hover:bg-gray-700/60"
+                      }`}
+                      onClick={() => void selectFriend(f)}
+                    >
+                      <p className="font-semibold text-white">{f.username}</p>
+                      {renderLastMessage(f)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        )}
+
+          {/* Right column */}
+          <div className="space-y-4">
+            <div className="card h-full space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">
+                  {selectedFriend ? `Chat with ${selectedFriend.username}` : "Chat"}
+                </h2>
+              </div>
+
+              {!selectedFriend ? (
+                <p className="text-sm text-gray-400">Select a friend to start chatting.</p>
+              ) : (
+                <>
+                  {selectedRoomId === null && (
+                    <p className="text-sm text-gray-400">
+                      No messages yet. Say hello to {selectedFriend.username}.
+                    </p>
+                  )}
+
+                  <div className="max-h-[420px] space-y-2 overflow-y-auto rounded bg-gray-900/40 p-3">
+                    {chatMessages.map((m) => (
+                      <div
+                        key={m.id}
+                        className={`flex ${m.user_id === user?.id ? "justify-end" : "justify-start"}`}
+                      >
+                        <div
+                          className={`max-w-[75%] rounded px-3 py-2 text-sm ${
+                            m.user_id === user?.id ? "bg-indigo-600 text-white" : "bg-gray-800 text-gray-100"
+                          }`}
+                        >
+                          <p className="text-xs text-gray-300">
+                            {m.user_id === user?.id ? "You" : selectedFriend.username} ·{" "}
+                            {new Date(m.created_at).toLocaleString()}
+                          </p>
+                          <p className="mt-1 whitespace-pre-wrap break-words">{m.content}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSendChatMessage()}
+                      placeholder="Type a message"
+                    />
+                    <button className="btn-primary" onClick={handleSendChatMessage}>
+                      Send
+                    </button>
+                  </div>
+
+                  {chatError && <p className="text-sm text-red-400">{chatError}</p>}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
 
         {error && <p className="text-red-400">{error}</p>}
         {requestMessage && <p className="text-green-400">{requestMessage}</p>}
