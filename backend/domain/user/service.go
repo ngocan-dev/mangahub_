@@ -140,7 +140,7 @@ func Login(ctx context.Context, db *sql.DB, req LoginRequest) (*LoginResponse, e
 
 	// Step 1 & 2: Find user by username or email and get password hash
 	// Check if input is email or username
-	isEmail := emailRegex.MatchString(req.UsernameOrEmail)
+	isEmail := emailRegex.MatchString(req.Email)
 
 	var query string
 	if isEmail {
@@ -149,7 +149,7 @@ func Login(ctx context.Context, db *sql.DB, req LoginRequest) (*LoginResponse, e
 		query = `SELECT id, username, email, password_hash FROM users WHERE username = ?`
 	}
 
-	err := db.QueryRowContext(ctx, query, req.UsernameOrEmail).Scan(
+	err := db.QueryRowContext(ctx, query, req.Email).Scan(
 		&userID, &username, &email, &passwordHash,
 	)
 
