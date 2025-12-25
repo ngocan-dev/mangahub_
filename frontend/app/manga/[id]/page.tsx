@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import MangaCard from "@/components/MangaCard";
+import MangaCard from "../../components/MangaCard"; // Adjusted import path
 import { mangaService, type Manga } from "@/services/manga.service";
 
 export default function MangaListPage() {

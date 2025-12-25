@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import ProtectedRoute from "@/components/ProtectedRoute";
+import ProtectedRoute from "../components/ProtectedRoute"; // Adjusted path to match the file structure
 import { friendService, type FriendActivity, type UserSummary } from "@/service/friend.service";
 
 export default function FriendsPage() {

@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 
-import MangaCard from "@/components/MangaCard";
-import ProtectedRoute from "@/components/ProtectedRoute";
+import MangaCard from "../components/MangaCard"; // Adjust the path as necessary
+import ProtectedRoute from "../components/ProtectedRoute"; // Adjusted path
 import { mangaService, type Manga } from "@/services/manga.service";
 
 const getStoredLibraryIds = (): string[] => {
