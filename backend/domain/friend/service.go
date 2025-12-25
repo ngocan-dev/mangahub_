@@ -121,12 +121,19 @@ func (s *Service) SendFriendRequest(ctx context.Context, requesterID int64, requ
 		return nil, ErrAlreadyFriends
 	}
 
-	pending, err := s.repo.HasPendingRequest(ctx, requesterID, targetUser.ID)
+	existing, err := s.repo.FindFriendshipBetween(ctx, requesterID, targetUser.ID)
 	if err != nil {
 		return nil, err
 	}
-	if pending {
-		return nil, ErrRequestPending
+	if existing != nil {
+		switch existing.Status {
+		case "pending":
+			return nil, ErrRequestPending
+		case "accepted":
+			return nil, ErrAlreadyFriends
+		case "blocked":
+			return nil, ErrBlocked
+		}
 	}
 
 	created, err := s.repo.CreateFriendRequest(ctx, requesterID, targetUser.ID)
@@ -179,7 +186,7 @@ func (s *Service) RejectFriendRequest(ctx context.Context, userID, requestID int
 	if req == nil || req.ToUserID != userID || req.Status != "pending" {
 		return ErrNoPendingRequest
 	}
-	return s.repo.UpdateFriendRequestStatus(ctx, requestID, "rejected")
+	return s.repo.UpdateFriendRequestStatus(ctx, requestID, "blocked")
 }
 
 // ListFriends returns accepted friends for a user.
