@@ -20,6 +20,132 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
+// GetReadingSummary returns lean statistics for a user.
+func (r *Repository) GetReadingSummary(ctx context.Context, userID int64) (*ReadingSummary, error) {
+	query := `
+WITH rp AS (
+    SELECT
+        COALESCE(SUM(Current_Chapter), 0) AS total_chapters_read,
+        COALESCE(COUNT(DISTINCT Novel_Id), 0) AS total_manga,
+        MAX(Last_Read_At) AS last_read_at
+    FROM Reading_Progress
+    WHERE User_Id = ?
+),
+rs AS (
+    SELECT COALESCE(Current_Streak_Days, 0) AS reading_streak
+    FROM Reading_Statistics
+    WHERE User_Id = ?
+)
+SELECT
+    COALESCE(rp.total_manga, 0) AS total_manga,
+    COALESCE(rp.total_chapters_read, 0) AS total_chapters_read,
+    COALESCE((SELECT reading_streak FROM rs LIMIT 1), 0) AS reading_streak,
+    rp.last_read_at
+FROM rp
+LIMIT 1
+`
+	var summary ReadingSummary
+	var lastReadAt sql.NullTime
+	if err := r.db.QueryRowContext(ctx, query, userID, userID).Scan(
+		&summary.TotalManga,
+		&summary.TotalChaptersRead,
+		&summary.ReadingStreak,
+		&lastReadAt,
+	); err != nil {
+		if err == sql.ErrNoRows {
+			return &summary, nil
+		}
+		log.Printf("history.repository.GetReadingSummary: query error user_id=%d err=%v", userID, err)
+		return nil, err
+	}
+	if lastReadAt.Valid {
+		summary.LastReadAt = &lastReadAt.Time
+	}
+	return &summary, nil
+}
+
+// GetReadingAnalyticsBuckets aggregates daily/weekly/monthly analytics.
+func (r *Repository) GetReadingAnalyticsBuckets(ctx context.Context, userID int64) (*ReadingAnalyticsResponse, error) {
+	resp := &ReadingAnalyticsResponse{
+		Daily:   []ReadingAnalyticsPoint{},
+		Weekly:  []ReadingAnalyticsPoint{},
+		Monthly: []ReadingAnalyticsPoint{},
+	}
+
+	type bucketQuery struct {
+		dest *[]ReadingAnalyticsPoint
+		sql  string
+	}
+
+	queries := []bucketQuery{
+		{
+			dest: &resp.Daily,
+			sql: `
+            SELECT date(Last_Read_At) AS bucket_date, COALESCE(SUM(Current_Chapter), 0) AS chapters_read
+            FROM Reading_Progress
+            WHERE User_Id = ?
+            GROUP BY bucket_date
+            ORDER BY bucket_date DESC
+            LIMIT 30
+            `,
+		},
+		{
+			dest: &resp.Weekly,
+			sql: `
+            SELECT date(Last_Read_At, 'weekday 0', '-6 days') AS bucket_date, COALESCE(SUM(Current_Chapter), 0) AS chapters_read
+            FROM Reading_Progress
+            WHERE User_Id = ?
+            GROUP BY bucket_date
+            ORDER BY bucket_date DESC
+            LIMIT 12
+            `,
+		},
+		{
+			dest: &resp.Monthly,
+			sql: `
+            SELECT strftime('%Y-%m-01', Last_Read_At) AS bucket_date, COALESCE(SUM(Current_Chapter), 0) AS chapters_read
+            FROM Reading_Progress
+            WHERE User_Id = ?
+            GROUP BY bucket_date
+            ORDER BY bucket_date DESC
+            LIMIT 12
+            `,
+		},
+	}
+
+	for _, q := range queries {
+		rows, err := r.db.QueryContext(ctx, q.sql, userID)
+		if err != nil {
+			log.Printf("history.repository.GetReadingAnalyticsBuckets: query error user_id=%d err=%v", userID, err)
+			return nil, err
+		}
+		for rows.Next() {
+			var bucket sql.NullString
+			var chapters int
+			if err := rows.Scan(&bucket, &chapters); err != nil {
+				log.Printf("history.repository.GetReadingAnalyticsBuckets: scan error user_id=%d err=%v", userID, err)
+				rows.Close()
+				return nil, err
+			}
+			if !bucket.Valid {
+				continue
+			}
+			*q.dest = append(*q.dest, ReadingAnalyticsPoint{
+				Date:         bucket.String,
+				ChaptersRead: chapters,
+			})
+		}
+		if err := rows.Err(); err != nil {
+			log.Printf("history.repository.GetReadingAnalyticsBuckets: rows error user_id=%d err=%v", userID, err)
+			rows.Close()
+			return nil, err
+		}
+		rows.Close()
+	}
+
+	return resp, nil
+}
+
 // GetUserProgress retrieves progress record
 func (r *Repository) GetUserProgress(ctx context.Context, userID, mangaID int64) (*UserProgress, error) {
 	query := `

@@ -358,32 +358,27 @@ func (h *MangaHandler) GetFriendsActivityFeed(c *gin.Context) {
 func (h *MangaHandler) GetReadingStatistics(c *gin.Context) {
 	userID, ok := RequireUserID(c)
 	if !ok {
+		log.Printf("handler.GetReadingStatistics: missing user_id in context")
 		return
 	}
 
 	force := c.Query("force") == "true"
 	log.Printf("handler.GetReadingStatistics: user_id=%d force=%t", userID, force)
-	stats, err := h.historyService.GetReadingStatistics(c.Request.Context(), userID, force)
+	summary, err := h.historyService.GetReadingSummary(c.Request.Context(), userID)
 	if err != nil {
-		status := http.StatusInternalServerError
-		switch {
-		case errors.Is(err, history.ErrNoData):
-			status = http.StatusNotFound
-		case errors.Is(err, history.ErrDatabaseError):
-			status = http.StatusInternalServerError
-		}
 		log.Printf("handler.GetReadingStatistics: user_id=%d error=%v", userID, err)
-		c.JSON(status, gin.H{"error": "unable to load reading statistics"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to load reading statistics"})
 		return
 	}
 
-	c.JSON(http.StatusOK, stats)
+	c.JSON(http.StatusOK, summary)
 }
 
 // GetReadingAnalytics filters reading statistics with query params.
 func (h *MangaHandler) GetReadingAnalytics(c *gin.Context) {
 	userID, ok := RequireUserID(c)
 	if !ok {
+		log.Printf("handler.GetReadingAnalytics: missing user_id in context")
 		return
 	}
 
@@ -395,19 +390,12 @@ func (h *MangaHandler) GetReadingAnalytics(c *gin.Context) {
 	}
 
 	log.Printf("handler.GetReadingAnalytics: user_id=%d time_period=%s", userID, req.TimePeriod)
-	stats, err := h.historyService.GetReadingAnalytics(c.Request.Context(), userID, req)
+	analytics, err := h.historyService.GetReadingAnalyticsBuckets(c.Request.Context(), userID)
 	if err != nil {
-		status := http.StatusInternalServerError
-		switch {
-		case errors.Is(err, history.ErrNoData):
-			status = http.StatusNotFound
-		case errors.Is(err, history.ErrDatabaseError):
-			status = http.StatusInternalServerError
-		}
 		log.Printf("handler.GetReadingAnalytics: user_id=%d error=%v", userID, err)
-		c.JSON(status, gin.H{"error": "unable to load reading analytics"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to load reading analytics"})
 		return
 	}
 
-	c.JSON(http.StatusOK, stats)
+	c.JSON(http.StatusOK, analytics)
 }

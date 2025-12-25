@@ -111,3 +111,24 @@ type ReadingAnalyticsRequest struct {
 	Month        *int   `form:"month" json:"month"`
 	IncludeGoals bool   `form:"include_goals" json:"include_goals"`
 }
+
+// ReadingSummary is a lean response for the statistics endpoint.
+type ReadingSummary struct {
+	TotalManga        int        `json:"total_manga"`
+	TotalChaptersRead int        `json:"total_chapters_read"`
+	ReadingStreak     int        `json:"reading_streak"`
+	LastReadAt        *time.Time `json:"last_read_at"`
+}
+
+// ReadingAnalyticsPoint represents a time-bucketed analytics entry.
+type ReadingAnalyticsPoint struct {
+	Date         string `json:"date"`
+	ChaptersRead int    `json:"chapters_read"`
+}
+
+// ReadingAnalyticsResponse contains grouped analytics buckets.
+type ReadingAnalyticsResponse struct {
+	Daily   []ReadingAnalyticsPoint `json:"daily"`
+	Weekly  []ReadingAnalyticsPoint `json:"weekly"`
+	Monthly []ReadingAnalyticsPoint `json:"monthly"`
+}
