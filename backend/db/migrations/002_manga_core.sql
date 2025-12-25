@@ -51,7 +51,7 @@ CREATE TABLE chapters (
     language        TEXT DEFAULT 'ja',
     volume_number   INTEGER,
     pages_count     INTEGER,
-    content_url     TEXT,
+    content_text    TEXT,
     created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     uploaded_by     INTEGER,

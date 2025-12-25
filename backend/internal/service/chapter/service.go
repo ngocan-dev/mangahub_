@@ -43,6 +43,6 @@ func (s *Service) GetChapterCount(ctx context.Context, mangaID int64) (int, erro
 }
 
 // CreateChapter persists a chapter row.
-func (s *Service) CreateChapter(ctx context.Context, mangaID int64, number int, title, contentURL, language string) (int64, error) {
-	return s.repo.CreateChapter(ctx, mangaID, number, title, contentURL, language)
+func (s *Service) CreateChapter(ctx context.Context, mangaID int64, number int, title, contentText, language string) (int64, error) {
+	return s.repo.CreateChapter(ctx, mangaID, number, title, contentText, language)
 }

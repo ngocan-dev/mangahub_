@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/context/AuthContext";
@@ -179,16 +180,18 @@ export default function MangaDetailPage({ params }: PageProps) {
           {sortedChapters.length ? (
             <ul className="mt-3 space-y-2 text-sm text-slate-300">
               {sortedChapters.map((chapter) => (
-                <li key={chapter.id} className="flex items-center justify-between rounded-lg bg-slate-800 px-3 py-2">
-                  <span>
-                    {chapter.number ? `Ch. ${chapter.number} — ` : ""}
-                    {chapter.title}
-                  </span>
-                  {chapter.updated_at ? (
-                    <span className="text-xs text-slate-500">
-                      Updated {new Date(chapter.updated_at).toLocaleDateString()}
+                <li key={chapter.id} className="rounded-lg bg-slate-800 text-slate-200 transition hover:-translate-y-0.5 hover:bg-slate-700">
+                  <Link href={`/chapter/${chapter.id}`} className="flex items-center justify-between px-3 py-2">
+                    <span className="font-medium">
+                      {chapter.number ? `Ch. ${chapter.number} — ` : ""}
+                      {chapter.title}
                     </span>
-                  ) : null}
+                    {chapter.updated_at ? (
+                      <span className="text-xs text-slate-400">
+                        Updated {new Date(chapter.updated_at).toLocaleDateString()}
+                      </span>
+                    ) : null}
+                  </Link>
                 </li>
               ))}
             </ul>
