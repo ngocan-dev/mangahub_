@@ -30,10 +30,10 @@ export default function MangaDetailPage({ params }: PageProps) {
   const [reviewComment, setReviewComment] = useState<string>("");
   const [reviewRating, setReviewRating] = useState<number>(8);
 
-  const sortedChapters = useMemo(
-    () => [...chapters].sort((a, b) => (a.chapter_number ?? 0) - (b.chapter_number ?? 0)),
-    [chapters],
-  );
+  const sortedChapters = useMemo(() => {
+    if (!Array.isArray(chapters) || chapters.length === 0) return [];
+    return [...chapters].sort((a, b) => (a.chapter_number ?? 0) - (b.chapter_number ?? 0));
+  }, [chapters]);
 
   useEffect(() => {
     if (!Number.isFinite(mangaId) || mangaId <= 0) {
@@ -52,7 +52,7 @@ export default function MangaDetailPage({ params }: PageProps) {
           mangaService.getReviews(mangaId),
         ]);
         setManga(mangaDetail);
-        setChapters(chapterList);
+        setChapters(Array.isArray(chapterList) ? chapterList : []);
         setReviews(reviewList);
       } catch (err) {
         setError("Unable to load this manga right now. Please ensure the server is online.");
