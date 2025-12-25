@@ -74,6 +74,7 @@ type LibraryStatus struct {
 type UserProgress struct {
 	CurrentChapter   int       `json:"current_chapter"`
 	CurrentChapterID *int64    `json:"current_chapter_id,omitempty"`
+	ProgressPercent  float64   `json:"progress_percent,omitempty"`
 	LastReadAt       time.Time `json:"last_read_at"`
 }
 

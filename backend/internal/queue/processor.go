@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"math"
 	"time"
 
 	"github.com/ngocan-dev/mangahub/backend/domain/comment"
@@ -108,6 +109,16 @@ func (p *WriteProcessor) processUpdateProgress(ctx context.Context, op WriteOper
 		return fmt.Errorf("chapter not found")
 	}
 
+	totalChapters, err := chapterService.GetChapterCount(ctx, op.MangaID)
+	if err != nil {
+		return err
+	}
+	if totalChapters < 1 {
+		return fmt.Errorf("no chapters available for manga")
+	}
+
+	progressPercent := math.Min(100, (float64(currentChapter)/float64(totalChapters))*100)
+
 	var chapterID *int64
 	if summary.ID != 0 {
 		id := summary.ID
@@ -115,7 +126,7 @@ func (p *WriteProcessor) processUpdateProgress(ctx context.Context, op WriteOper
 	}
 
 	historyRepo := history.NewRepository(p.db)
-	return historyRepo.UpdateProgress(ctx, op.UserID, op.MangaID, currentChapter, chapterID)
+	return historyRepo.UpdateProgress(ctx, op.UserID, op.MangaID, currentChapter, chapterID, progressPercent)
 }
 
 // processBroadcastProgress attempts to broadcast a queued progress update

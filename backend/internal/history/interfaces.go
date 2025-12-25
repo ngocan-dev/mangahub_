@@ -30,7 +30,7 @@ type ReadingAnalyticsRequest = domainhistory.ReadingAnalyticsRequest
 // Repository defines the persistence operations required by the history domain.
 type Repository interface {
 	GetUserProgress(ctx context.Context, userID, mangaID int64) (*domainhistory.UserProgress, error)
-	UpdateProgress(ctx context.Context, userID, mangaID int64, chapter int, chapterID *int64) error
+	UpdateProgress(ctx context.Context, userID, mangaID int64, chapter int, chapterID *int64, progressPercent float64) error
 	IsMangaCompleted(ctx context.Context, userID, mangaID int64) (bool, error)
 	CalculateReadingStatistics(ctx context.Context, userID int64) (*domainhistory.ReadingStatistics, error)
 	SaveReadingStatistics(ctx context.Context, stats *domainhistory.ReadingStatistics) error

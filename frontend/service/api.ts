@@ -34,6 +34,7 @@ export interface LibraryStatus {
 export interface UserProgress {
   current_chapter: number;
   current_chapter_id?: number;
+  progress_percent?: number;
   last_read_at: string;
 }
 

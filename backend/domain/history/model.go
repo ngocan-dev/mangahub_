@@ -6,6 +6,7 @@ import "time"
 type UserProgress struct {
 	CurrentChapter   int       `json:"current_chapter"`
 	CurrentChapterID *int64    `json:"current_chapter_id,omitempty"`
+	ProgressPercent  float64   `json:"progress_percent,omitempty"`
 	LastReadAt       time.Time `json:"last_read_at"`
 }
 
@@ -23,20 +24,20 @@ type UpdateProgressResponse struct {
 
 // Activity represents user activity entry
 type Activity struct {
-	ActivityID    int64      `json:"activity_id"`
-	UserID        int64      `json:"user_id"`
-	Username      string     `json:"username"`
-	ActivityType  string     `json:"activity_type"`
-	MangaID       int64      `json:"manga_id"`
-	MangaName     string     `json:"manga_name,omitempty"`
-	MangaTitle    string     `json:"manga_title,omitempty"`
-	MangaImage    string     `json:"manga_image,omitempty"`
-	Rating        *int       `json:"rating,omitempty"`
-	ReviewID      *int64     `json:"review_id,omitempty"`
-	ReviewContent *string    `json:"review_content,omitempty"`
-	CompletedAt   *time.Time `json:"completed_at,omitempty"`
+	ActivityID    int64                  `json:"activity_id"`
+	UserID        int64                  `json:"user_id"`
+	Username      string                 `json:"username"`
+	ActivityType  string                 `json:"activity_type"`
+	MangaID       int64                  `json:"manga_id"`
+	MangaName     string                 `json:"manga_name,omitempty"`
+	MangaTitle    string                 `json:"manga_title,omitempty"`
+	MangaImage    string                 `json:"manga_image,omitempty"`
+	Rating        *int                   `json:"rating,omitempty"`
+	ReviewID      *int64                 `json:"review_id,omitempty"`
+	ReviewContent *string                `json:"review_content,omitempty"`
+	CompletedAt   *time.Time             `json:"completed_at,omitempty"`
 	Payload       map[string]interface{} `json:"payload,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
+	CreatedAt     time.Time              `json:"created_at"`
 }
 
 // ActivityFeedResponse wraps paginated activities

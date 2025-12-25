@@ -19,7 +19,7 @@ export default function MangaDetailPage({ params }: PageProps) {
   const { isAuthenticated } = useAuth();
   const [manga, setManga] = useState<MangaDetail | null>(null);
   const [reviews, setReviews] = useState<GetReviewsResponse | null>(null);
-  const [progress, setProgress] = useState<number>(0);
+  const [currentChapter, setCurrentChapter] = useState<number>(0);
   const [status, setStatus] = useState<string | null>(null);
   const [inLibrary, setInLibrary] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
@@ -31,6 +31,13 @@ export default function MangaDetailPage({ params }: PageProps) {
     if (!manga?.chapters?.length) return [];
     return [...manga.chapters].sort((a, b) => (a.number ?? 0) - (b.number ?? 0));
   }, [manga?.chapters]);
+
+  const totalChapters = useMemo(() => manga?.chapter_count ?? sortedChapters.length ?? 0, [manga?.chapter_count, sortedChapters.length]);
+
+  const progressPercent = useMemo(() => {
+    if (!totalChapters || currentChapter <= 0) return 0;
+    return Math.min(100, Math.round((currentChapter / totalChapters) * 100));
+  }, [currentChapter, totalChapters]);
 
   useEffect(() => {
     if (!Number.isFinite(mangaId) || mangaId <= 0) {
@@ -48,7 +55,7 @@ export default function MangaDetailPage({ params }: PageProps) {
           mangaService.getReviews(mangaId),
         ]);
         setManga(mangaDetail);
-        setProgress(mangaDetail.user_progress?.current_chapter ?? mangaDetail.library_status?.current_chapter ?? 0);
+        setCurrentChapter(mangaDetail.user_progress?.current_chapter ?? mangaDetail.library_status?.current_chapter ?? 0);
         setInLibrary(Boolean(mangaDetail.library_status));
         setReviews(reviewList);
       } catch (err) {
@@ -66,10 +73,10 @@ export default function MangaDetailPage({ params }: PageProps) {
     setStatus(null);
     setError(null);
     try {
-      const response = await mangaService.addLibraryEntry(mangaId, { status: "reading", current_chapter: progress });
+      const response = await mangaService.addLibraryEntry(mangaId, { status: "reading", current_chapter: currentChapter });
       setInLibrary(true);
       setStatus(response.already_in_library ? "Already in your library." : "Added to your library!");
-      setProgress(response.current_chapter ?? progress);
+      setCurrentChapter(response.current_chapter ?? currentChapter);
     } catch (err) {
       setError("Could not add to library. Please try again.");
       console.error(err);
@@ -78,10 +85,17 @@ export default function MangaDetailPage({ params }: PageProps) {
 
   const handleProgressUpdate = async () => {
     if (!Number.isFinite(mangaId) || mangaId <= 0) return;
+    if (currentChapter < 1 || (totalChapters > 0 && currentChapter > totalChapters)) {
+      setError("Select a valid chapter before updating progress.");
+      return;
+    }
     setStatus(null);
     setError(null);
     try {
-      const response = await mangaService.setProgress(mangaId, { current_chapter: progress });
+      const response = await mangaService.setProgress(mangaId, { current_chapter: currentChapter });
+      if (response.user_progress?.current_chapter !== undefined) {
+        setCurrentChapter(response.user_progress.current_chapter);
+      }
       setStatus(response.message || "Progress updated.");
     } catch (err) {
       setError("Could not update progress.");
@@ -148,19 +162,29 @@ export default function MangaDetailPage({ params }: PageProps) {
       <div className="grid gap-4 md:grid-cols-3">
         <div className="card md:col-span-2">
           <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-white">Reading progress</h2>
-          <span className="text-sm text-slate-400">{progress}%</span>
-        </div>
-        <input
-          type="range"
+            <h2 className="text-lg font-semibold text-white">Reading progress</h2>
+            <div className="text-right">
+              <p className="text-sm text-slate-400">{progressPercent}%</p>
+              <p className="text-xs text-slate-500">
+                Chapter {currentChapter || 0}
+                {totalChapters ? ` / ${totalChapters}` : ""}
+              </p>
+            </div>
+          </div>
+          <input
+            type="range"
             min={0}
-            max={100}
-            value={progress}
-            onChange={(e) => setProgress(Number(e.target.value))}
+            max={totalChapters > 0 ? totalChapters : 100}
+            value={currentChapter}
+            onChange={(e) => setCurrentChapter(Number(e.target.value))}
             className="mt-3 w-full accent-primary"
           />
           <div className="mt-3 flex items-center gap-3">
-            <button className="btn-primary" onClick={handleProgressUpdate} disabled={!isAuthenticated}>
+            <button
+              className="btn-primary"
+              onClick={handleProgressUpdate}
+              disabled={!isAuthenticated || currentChapter < 1 || (totalChapters > 0 && currentChapter > totalChapters)}
+            >
               Update progress
             </button>
             {!isAuthenticated ? <p className="text-sm text-amber-300">Login to update your progress.</p> : null}
@@ -184,7 +208,12 @@ export default function MangaDetailPage({ params }: PageProps) {
           {sortedChapters.length ? (
             <ul className="mt-3 space-y-2 text-sm text-slate-300">
               {sortedChapters.map((chapter) => (
-                <li key={chapter.id} className="rounded-lg bg-slate-800 text-slate-200 transition hover:-translate-y-0.5 hover:bg-slate-700">
+                <li
+                  key={chapter.id}
+                  className={`rounded-lg text-slate-200 transition hover:-translate-y-0.5 hover:bg-slate-700 ${
+                    currentChapter > 0 && (chapter.number ?? 0) <= currentChapter ? "bg-slate-800/70 text-slate-400" : "bg-slate-800"
+                  }`}
+                >
                   <Link href={`/chapter/${chapter.id}`} className="flex items-center justify-between px-3 py-2">
                     <span className="font-medium">
                       {chapter.number ? `Ch. ${chapter.number} — ` : ""}

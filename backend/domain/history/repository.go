@@ -166,6 +166,7 @@ func (r *Repository) GetUserProgress(ctx context.Context, userID, mangaID int64)
         SELECT
             COALESCE(c.number, 0) as current_chapter,
             rp.current_chapter_id,
+            COALESCE(rp.progress_percent, 0) as progress_percent,
             rp.last_read_at
         FROM reading_progress rp
         LEFT JOIN chapters c ON rp.current_chapter_id = c.id
@@ -176,6 +177,7 @@ func (r *Repository) GetUserProgress(ctx context.Context, userID, mangaID int64)
 	err := r.db.QueryRowContext(ctx, query, userID, mangaID).Scan(
 		&progress.CurrentChapter,
 		&chapterID,
+		&progress.ProgressPercent,
 		&progress.LastReadAt,
 	)
 	if err == sql.ErrNoRows {
@@ -191,12 +193,12 @@ func (r *Repository) GetUserProgress(ctx context.Context, userID, mangaID int64)
 }
 
 // UpdateProgress updates progress table
-func (r *Repository) UpdateProgress(ctx context.Context, userID, mangaID int64, chapter int, chapterID *int64) error {
+func (r *Repository) UpdateProgress(ctx context.Context, userID, mangaID int64, chapter int, chapterID *int64, progressPercent float64) error {
 	res, err := r.db.ExecContext(ctx, `
 UPDATE reading_progress
-SET current_chapter_id = ?, last_read_at = CURRENT_TIMESTAMP
+SET current_chapter_id = ?, progress_percent = ?, last_read_at = CURRENT_TIMESTAMP
 WHERE user_id = ? AND manga_id = ?
-`, chapterID, userID, mangaID)
+`, chapterID, progressPercent, userID, mangaID)
 	if err != nil {
 		return err
 	}
@@ -205,11 +207,12 @@ WHERE user_id = ? AND manga_id = ?
 	}
 	_, err = r.db.ExecContext(ctx, `
 INSERT INTO reading_progress (user_id, manga_id, current_chapter_id, last_read_at, progress_percent, current_page)
-VALUES (?, ?, ?, CURRENT_TIMESTAMP, 0, 0)
+VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, 0)
 ON CONFLICT(user_id, manga_id) DO UPDATE SET
     current_chapter_id = excluded.current_chapter_id,
+    progress_percent = excluded.progress_percent,
     last_read_at = excluded.last_read_at
-`, userID, mangaID, chapterID)
+`, userID, mangaID, chapterID, progressPercent)
 	return err
 }
 
