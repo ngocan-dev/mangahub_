@@ -3,8 +3,8 @@ import { Inter } from "next/font/google";
 import type { ReactNode } from "react";
 import "./globals.css";
 
-import Navbar from "@/components/Navbar";
-import SystemStatusBanner from "@/components/SystemStatusBanner"; // Ensure this file exists
+import Navbar from "../app/components/Navbar";
+import SystemStatusBanner from "../components/SystemStatusBanner"; // Ensure this file exists
 import { AuthProvider } from "@/context/AuthContext";
 
 const inter = Inter({ subsets: ["latin"] });
