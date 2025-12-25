@@ -1,11 +1,13 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -79,29 +81,17 @@ func (h *AuthHandler) Login(c *gin.Context) {
 // Token claims are properly validated
 // Unauthorized access is prevented
 func (h *AuthHandler) RequireAuth(c *gin.Context) {
-	// Get token from Authorization header
-	authHeader := strings.TrimSpace(c.GetHeader("Authorization"))
-	if authHeader == "" {
+	// Get token from header or websocket-friendly locations
+	tokenString := getTokenFromRequest(c)
+	if tokenString == "" {
 		// Unauthorized access is prevented
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "authorization header required",
+			"error":   "authorization token required",
 			"message": "please provide a valid authentication token",
 		})
 		c.Abort()
 		return
 	}
-
-	lowered := strings.ToLower(authHeader)
-	if !strings.HasPrefix(lowered, "bearer ") {
-		// Invalid tokens are rejected
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":   "invalid authorization header format",
-			"message": "authorization header must be in format: Bearer <token>",
-		})
-		c.Abort()
-		return
-	}
-	tokenString := strings.TrimSpace(authHeader[len("Bearer "):])
 
 	// Validate token
 	claims, err := auth.ValidateToken(tokenString)
@@ -177,8 +167,79 @@ func (h *AuthHandler) RequireAuth(c *gin.Context) {
 
 	// Set user context for downstream handlers
 	c.Set("user_id", claims.UserID)
+	c.Set("userID", claims.UserID) // compatibility with existing handlers
 	c.Set("username", claims.Username)
 	c.Set("email", claims.Email)
 
 	c.Next()
+}
+
+// Me returns authenticated user info based on the JWT claims.
+func (h *AuthHandler) Me(c *gin.Context) {
+	userID, ok := c.Get("user_id")
+	if !ok {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+		return
+	}
+
+	userIDInt, ok := userID.(int64)
+	if !ok || userIDInt <= 0 {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+		return
+	}
+
+	var u struct {
+		ID       int64  `json:"id"`
+		Username string `json:"username"`
+		Email    string `json:"email"`
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+	defer cancel()
+
+	err := h.DB.QueryRowContext(ctx, `
+		SELECT id, username, email
+		FROM users
+		WHERE id = ?
+	`, userIDInt).Scan(&u.ID, &u.Username, &u.Email)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+
+		log.Printf("me: failed to load user %d: %v", userIDInt, err)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
+		return
+	}
+
+	c.JSON(http.StatusOK, u)
+}
+
+func getTokenFromRequest(c *gin.Context) string {
+	// Prefer standard Authorization header
+	authHeader := strings.TrimSpace(c.GetHeader("Authorization"))
+	if authHeader != "" {
+		lowered := strings.ToLower(authHeader)
+		if strings.HasPrefix(lowered, "bearer ") {
+			return strings.TrimSpace(authHeader[len("Bearer "):])
+		}
+	}
+
+	// WebSocket clients cannot set custom headers; allow token via query/subprotocol
+	if strings.EqualFold(c.GetHeader("Upgrade"), "websocket") || strings.Contains(strings.ToLower(c.GetHeader("Connection")), "upgrade") {
+		if token := strings.TrimSpace(c.Query("token")); token != "" {
+			return token
+		}
+
+		if proto := c.GetHeader("Sec-WebSocket-Protocol"); proto != "" {
+			parts := strings.Split(proto, ",")
+			if len(parts) > 0 {
+				return strings.TrimSpace(parts[0])
+			}
+		}
+	}
+
+	return ""
 }
