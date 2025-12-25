@@ -1,4 +1,4 @@
-PRAGMA foreign_keys = OFF;
+SET FOREIGN_KEY_CHECKS = 0;
 
 /* Drop views */
 DROP VIEW IF EXISTS vw_manga_with_tags;
@@ -23,4 +23,4 @@ DROP TABLE IF EXISTS mangas;
 DROP TABLE IF EXISTS users;
 DROP TABLE IF EXISTS roles;
 
-PRAGMA foreign_keys = ON;
+SET FOREIGN_KEY_CHECKS = 1;
