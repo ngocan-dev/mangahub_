@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -24,17 +23,21 @@ func NewFriendHandler(service *friend.Service) *FriendHandler {
 
 // Search allows a user to look up another user by username
 func (h *FriendHandler) Search(c *gin.Context) {
-	query := c.Query("query")
-	if query == "" {
-		query = c.Query("username")
+	userID, ok := RequireUserID(c)
+	if !ok {
+		return
 	}
-	query = strings.TrimSpace(query)
+
+	query := c.Query("q")
+	if query == "" {
+		query = c.Query("query")
+	}
 	if query == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "query parameter is required"})
 		return
 	}
 
-	results, err := h.service.SearchUsers(c.Request.Context(), query)
+	results, err := h.service.SearchUsers(c.Request.Context(), userID, query)
 	if err != nil {
 		log.Printf("handler.Search: search error query=%q err=%v", query, err)
 		if errors.Is(err, friend.ErrInvalidUsername) {
@@ -67,17 +70,17 @@ func (h *FriendHandler) SendRequest(c *gin.Context) {
 	}
 
 	var req struct {
-		Username string `json:"username" binding:"required"`
+		TargetUserID int64 `json:"target_user_id" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "username is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "target_user_id is required"})
 		return
 	}
 
 	requesterUsername, _ := c.Get("username")
 	usernameString, _ := requesterUsername.(string)
 
-	friendship, err := h.service.SendFriendRequest(c.Request.Context(), userID, usernameString, req.Username)
+	friendship, err := h.service.SendFriendRequest(c.Request.Context(), userID, usernameString, req.TargetUserID)
 	if err != nil {
 		switch {
 		case errors.Is(err, friend.ErrInvalidUsername):
@@ -117,17 +120,17 @@ func (h *FriendHandler) AcceptRequest(c *gin.Context) {
 	}
 
 	var req struct {
-		RequesterUsername string `json:"requester_username" binding:"required"`
+		RequestID int64 `json:"request_id" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "requester_username is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "request_id is required"})
 		return
 	}
 
 	accepterUsername, _ := c.Get("username")
 	accepterUsernameStr, _ := accepterUsername.(string)
 
-	friendship, err := h.service.AcceptFriendRequest(c.Request.Context(), userID, accepterUsernameStr, req.RequesterUsername)
+	friendship, err := h.service.AcceptFriendRequest(c.Request.Context(), userID, accepterUsernameStr, req.RequestID)
 	if err != nil {
 		switch {
 		case errors.Is(err, friend.ErrInvalidUsername):
@@ -144,6 +147,66 @@ func (h *FriendHandler) AcceptRequest(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, friendship)
+}
+
+// RejectRequest rejects a pending friend request
+func (h *FriendHandler) RejectRequest(c *gin.Context) {
+	userID, ok := RequireUserID(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		RequestID int64 `json:"request_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "request_id is required"})
+		return
+	}
+	if err := h.service.RejectFriendRequest(c.Request.Context(), userID, req.RequestID); err != nil {
+		if errors.Is(err, friend.ErrNoPendingRequest) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "no pending friend request"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to reject friend request"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "request rejected"})
+}
+
+// ListFriends returns accepted friends for current user
+func (h *FriendHandler) ListFriends(c *gin.Context) {
+	userID, ok := RequireUserID(c)
+	if !ok {
+		return
+	}
+	friends, err := h.service.ListFriends(c.Request.Context(), userID)
+	if err != nil {
+		log.Printf("handler.ListFriends: user_id=%d err=%v", userID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load friends"})
+		return
+	}
+	if friends == nil {
+		friends = []friend.UserSummary{}
+	}
+	c.JSON(http.StatusOK, gin.H{"friends": friends})
+}
+
+// PendingRequests lists incoming friend requests for the authenticated user.
+func (h *FriendHandler) PendingRequests(c *gin.Context) {
+	userID, ok := RequireUserID(c)
+	if !ok {
+		return
+	}
+	reqs, err := h.service.ListPendingRequests(c.Request.Context(), userID)
+	if err != nil {
+		log.Printf("handler.PendingRequests: user_id=%d err=%v", userID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load friend requests"})
+		return
+	}
+	if reqs == nil {
+		reqs = []friend.FriendRequest{}
+	}
+	c.JSON(http.StatusOK, gin.H{"requests": reqs})
 }
 
 // RequireUserID is a helper to extract user ID and fail fast when missing

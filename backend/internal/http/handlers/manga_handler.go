@@ -62,6 +62,7 @@ func NewMangaHandlerWithService(db *sql.DB, mangaService *manga.Service) *MangaH
 
 	reviewRepo := comment.NewRepository(db)
 	reviewSvc := comment.NewService(reviewRepo, mangaService, nil)
+	reviewSvc.SetActivityRecorder(historySvc)
 
 	return &MangaHandler{
 		DB:             db,

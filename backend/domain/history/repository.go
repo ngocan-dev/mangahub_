@@ -4,9 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 )
 
@@ -261,52 +261,32 @@ func (r *Repository) GetFriends(ctx context.Context, userID int64) ([]int64, err
 	return ids, rows.Err()
 }
 
+// RecordActivity stores an activity row for the activity feed.
+func (r *Repository) RecordActivity(ctx context.Context, userID int64, activityType string, mangaID *int64, payload map[string]interface{}) error {
+	exists, err := r.tableExists(ctx, "activities")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		log.Printf("history.repository.RecordActivity: activities table missing user_id=%d type=%s", userID, activityType)
+		return nil
+	}
+	payloadJSON := ""
+	if payload != nil {
+		if b, err := json.Marshal(payload); err == nil {
+			payloadJSON = string(b)
+		}
+	}
+	_, err = r.db.ExecContext(ctx, `
+        INSERT INTO activities (user_id, type, manga_id, payload)
+        VALUES (?, ?, ?, ?)
+    `, userID, activityType, mangaID, payloadJSON)
+	return err
+}
+
 // GetFriendsActivities returns friend feed entries
 func (r *Repository) GetFriendsActivities(ctx context.Context, userID int64, page, limit int) ([]Activity, int, error) {
 	log.Printf("history.repository.GetFriendsActivities: start user_id=%d page=%d limit=%d", userID, page, limit)
-	friendIDs, err := r.GetFriends(ctx, userID)
-	if err != nil {
-		return nil, 0, err
-	}
-	if len(friendIDs) == 0 {
-		return []Activity{}, 0, nil
-	}
-
-	placeholders := make([]string, len(friendIDs))
-	args := make([]interface{}, len(friendIDs))
-	for i, id := range friendIDs {
-		placeholders[i] = "?"
-		args[i] = id
-	}
-	placeholderStr := strings.Join(placeholders, ",")
-
-	countQuery := fmt.Sprintf(`
-        SELECT COUNT(*) FROM (
-            SELECT lib.completed_at as activity_date
-            FROM libraries lib
-            WHERE lib.user_id IN (%s) AND lib.status = 'completed' AND lib.completed_at IS NOT NULL
-
-            UNION ALL
-
-            SELECT rt.created_at as activity_date
-            FROM ratings rt
-            WHERE rt.user_id IN (%s)
-        )
-	`, placeholderStr, placeholderStr)
-
-	var total int
-	countArgs := append(args, args...)
-	if err := r.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
-		if err == sql.ErrNoRows {
-			return []Activity{}, 0, nil
-		}
-		log.Printf("history.repository.GetFriendsActivities: count query failed user_id=%d err=%v", userID, err)
-		return nil, 0, err
-	}
-	if total == 0 {
-		return []Activity{}, 0, nil
-	}
-
 	if page < 1 {
 		page = 1
 	}
@@ -316,75 +296,52 @@ func (r *Repository) GetFriendsActivities(ctx context.Context, userID int64, pag
 	if limit > 100 {
 		limit = 100
 	}
-	if page > 10000 {
-		page = 10000
-	}
 	offset := (page - 1) * limit
 
-	query := fmt.Sprintf(`
+	countQuery := `
+        SELECT COUNT(*)
+        FROM activities a
+        JOIN friends f ON f.friend_id = a.user_id
+        WHERE f.user_id = ?
+    `
+	log.Printf("history.repository.GetFriendsActivities: count_sql=%s", countQuery)
+	var total int
+	if err := r.db.QueryRowContext(ctx, countQuery, userID).Scan(&total); err != nil {
+		log.Printf("history.repository.GetFriendsActivities: count query user_id=%d err=%v", userID, err)
+		if errors.Is(err, sql.ErrNoRows) {
+			return []Activity{}, 0, nil
+		}
+		return nil, 0, err
+	}
+	if total == 0 {
+		return []Activity{}, 0, nil
+	}
+
+	query := `
         SELECT
-            activity_id,
-            user_id,
-            username,
-            activity_type,
-            manga_id,
-            manga_name,
-            manga_title,
-            manga_image,
-            rating,
-            review_id,
-            review_content,
-            completed_at,
-            created_at
-        FROM (
-            SELECT
-                lib.id as activity_id,
-                lib.user_id as user_id,
-                u.username as username,
-                'completed_manga' as activity_type,
-                lib.manga_id as manga_id,
-                m.title as manga_name,
-                m.title as manga_title,
-                m.cover_url as manga_image,
-                NULL as rating,
-                NULL as review_id,
-                NULL as review_content,
-                lib.completed_at as completed_at,
-                lib.completed_at as created_at
-            FROM libraries lib
-            JOIN users u ON lib.user_id = u.id
-            JOIN mangas m ON lib.manga_id = m.id
-            WHERE lib.user_id IN (%s) AND lib.status = 'completed' AND lib.completed_at IS NOT NULL
-
-            UNION ALL
-
-            SELECT
-                rt.id as activity_id,
-                rt.user_id as user_id,
-                u.username as username,
-                'rating' as activity_type,
-                rt.manga_id as manga_id,
-                m.title as manga_name,
-                m.title as manga_title,
-                m.cover_url as manga_image,
-                rt.score as rating,
-                NULL as review_id,
-                rt.review as review_content,
-                NULL as completed_at,
-                rt.created_at as created_at
-            FROM ratings rt
-            JOIN users u ON rt.user_id = u.id
-            JOIN mangas m ON rt.manga_id = m.id
-            WHERE rt.user_id IN (%s)
-        )
-        ORDER BY created_at DESC
+            a.id,
+            a.user_id,
+            u.username,
+            a.type,
+            COALESCE(a.manga_id, 0),
+            m.title as manga_title,
+            m.cover_url as manga_image,
+            a.payload,
+            a.created_at
+        FROM activities a
+        JOIN friends f ON f.friend_id = a.user_id
+        JOIN users u ON u.id = a.user_id
+        LEFT JOIN mangas m ON m.id = a.manga_id
+        WHERE f.user_id = ?
+        ORDER BY a.created_at DESC
         LIMIT ? OFFSET ?
-    `, placeholderStr, placeholderStr)
-
-	rows, err := r.db.QueryContext(ctx, query, append(append(args, args...), limit, offset)...)
+    `
+	log.Printf("history.repository.GetFriendsActivities: feed_sql=%s", query)
+	log.Printf("history.repository.GetFriendsActivities: query user_id=%d limit=%d offset=%d", userID, limit, offset)
+	rows, err := r.db.QueryContext(ctx, query, userID, limit, offset)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return []Activity{}, 0, nil
+			return []Activity{}, total, nil
 		}
 		log.Printf("history.repository.GetFriendsActivities: list query failed user_id=%d err=%v", userID, err)
 		return nil, 0, err
@@ -393,42 +350,31 @@ func (r *Repository) GetFriendsActivities(ctx context.Context, userID int64, pag
 
 	var activities []Activity
 	for rows.Next() {
-		var activity Activity
-		var rating sql.NullInt64
-		var reviewID sql.NullInt64
-		var reviewContent sql.NullString
-		var completedAt sql.NullTime
+		var (
+			activity   Activity
+			payloadRaw sql.NullString
+		)
 		if err := rows.Scan(
 			&activity.ActivityID,
 			&activity.UserID,
 			&activity.Username,
 			&activity.ActivityType,
 			&activity.MangaID,
-			&activity.MangaName,
 			&activity.MangaTitle,
 			&activity.MangaImage,
-			&rating,
-			&reviewID,
-			&reviewContent,
-			&completedAt,
+			&payloadRaw,
 			&activity.CreatedAt,
 		); err != nil {
+			log.Printf("history.repository.GetFriendsActivities: scan error user_id=%d err=%v", userID, err)
 			continue
 		}
-		if rating.Valid {
-			val := int(rating.Int64)
-			activity.Rating = &val
-		}
-		if reviewID.Valid {
-			val := reviewID.Int64
-			activity.ReviewID = &val
-		}
-		if reviewContent.Valid {
-			val := reviewContent.String
-			activity.ReviewContent = &val
-		}
-		if completedAt.Valid {
-			activity.CompletedAt = &completedAt.Time
+		if payloadRaw.Valid && payloadRaw.String != "" {
+			var payload map[string]interface{}
+			if err := json.Unmarshal([]byte(payloadRaw.String), &payload); err == nil {
+				activity.Payload = payload
+			} else {
+				log.Printf("history.repository.GetFriendsActivities: payload parse error user_id=%d payload=%s err=%v", userID, payloadRaw.String, err)
+			}
 		}
 		activities = append(activities, activity)
 	}
