@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 )
 
@@ -138,16 +139,15 @@ WHERE r.Review_Id = ?
 	return &review, nil
 }
 
-// GetReviews fetches paginated list of reviews
-func (r *Repository) GetReviews(ctx context.Context, mangaID int64, page, limit int, sortBy string) ([]Review, int, error) {
+// GetReviewsByMangaID fetches paginated list of reviews for a manga.
+func (r *Repository) GetReviewsByMangaID(ctx context.Context, mangaID int64, page, limit int, sortBy string) ([]Review, int, error) {
 	var total int
-	err := r.db.QueryRowContext(ctx, `
-        SELECT COUNT(*) FROM Reviews WHERE Novel_Id = ?
-    `, mangaID).Scan(&total)
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM ratings WHERE manga_id = ? AND review IS NOT NULL AND review <> ''`, mangaID).Scan(&total)
 	if err != nil {
 		if isNoDataError(err) {
 			return []Review{}, 0, nil
 		}
+		log.Printf("comment.repository.GetReviewsByMangaID: count failed manga_id=%d err=%v", mangaID, err)
 		return nil, 0, err
 	}
 
@@ -164,37 +164,40 @@ func (r *Repository) GetReviews(ctx context.Context, mangaID int64, page, limit 
 	if limit > 100 {
 		limit = 100
 	}
-	if page > 10000 {
-		page = 10000
-	}
 	offset := (page - 1) * limit
+	if offset < 0 {
+		offset = 0
+	}
 
-	orderClause := "ORDER BY r.Created_At DESC"
-	if sortBy == "helpfulness" || sortBy == "rating" {
-		orderClause = "ORDER BY r.Rating DESC, r.Created_At DESC"
-	} else if sortBy == "oldest" {
-		orderClause = "ORDER BY r.Created_At ASC"
+	orderClause := "ORDER BY r.created_at DESC"
+	switch strings.ToLower(sortBy) {
+	case "rating", "helpfulness":
+		orderClause = "ORDER BY r.score DESC, r.created_at DESC"
+	case "oldest":
+		orderClause = "ORDER BY r.created_at ASC"
 	}
 
 	query := fmt.Sprintf(`
         SELECT
-            r.Review_Id,
-            r.User_Id,
-            u.Username,
-            r.Novel_Id,
-            r.Rating,
-            r.Content,
-            r.Created_At,
-            r.Updated_At
-        FROM Reviews r
-        JOIN Users u ON r.User_Id = u.UserId
-        WHERE r.Novel_Id = ?
+            r.id,
+            r.user_id,
+            u.username,
+            u.avatar_url,
+            r.manga_id,
+            r.score,
+            r.review,
+            r.created_at,
+            r.updated_at
+        FROM ratings r
+        LEFT JOIN users u ON r.user_id = u.id
+        WHERE r.manga_id = ? AND r.review IS NOT NULL AND r.review <> ''
         %s
         LIMIT ? OFFSET ?
     `, orderClause)
 
 	rows, err := r.db.QueryContext(ctx, query, mangaID, limit, offset)
 	if err != nil {
+		log.Printf("comment.repository.GetReviewsByMangaID: query failed manga_id=%d err=%v", mangaID, err)
 		return nil, 0, err
 	}
 	defer rows.Close()
@@ -202,18 +205,33 @@ func (r *Repository) GetReviews(ctx context.Context, mangaID int64, page, limit 
 	var reviews []Review
 	for rows.Next() {
 		var review Review
+		var username sql.NullString
+		var avatar sql.NullString
+		var content sql.NullString
 		var updatedAt sql.NullTime
 		if err := rows.Scan(
 			&review.ReviewID,
 			&review.UserID,
-			&review.Username,
+			&username,
+			&avatar,
 			&review.MangaID,
 			&review.Rating,
-			&review.Content,
+			&content,
 			&review.CreatedAt,
 			&updatedAt,
 		); err != nil {
-			continue
+			log.Printf("comment.repository.GetReviewsByMangaID: scan failed manga_id=%d err=%v", mangaID, err)
+			return nil, 0, err
+		}
+
+		if username.Valid {
+			review.Username = username.String
+		}
+		if avatar.Valid {
+			review.AvatarURL = avatar.String
+		}
+		if content.Valid {
+			review.Content = content.String
 		}
 		if updatedAt.Valid {
 			review.UpdatedAt = updatedAt.Time
@@ -222,6 +240,7 @@ func (r *Repository) GetReviews(ctx context.Context, mangaID int64, page, limit 
 	}
 
 	if err := rows.Err(); err != nil {
+		log.Printf("comment.repository.GetReviewsByMangaID: rows error manga_id=%d err=%v", mangaID, err)
 		return nil, 0, err
 	}
 
@@ -232,10 +251,10 @@ func (r *Repository) GetReviews(ctx context.Context, mangaID int64, page, limit 
 func (r *Repository) GetReviewStats(ctx context.Context, mangaID int64) (*ReviewStats, error) {
 	query := `
         SELECT
-            COUNT(*) as total_reviews,
-            COALESCE(AVG(Rating), 0) as average_rating
-        FROM Reviews
-        WHERE Novel_Id = ?
+            COALESCE(COUNT(*), 0) as total_reviews,
+            COALESCE(AVG(score), 0) as average_rating
+        FROM ratings
+        WHERE manga_id = ? AND review IS NOT NULL AND review <> ''
     `
 	var stats ReviewStats
 	err := r.db.QueryRowContext(ctx, query, mangaID).Scan(
@@ -246,6 +265,7 @@ func (r *Repository) GetReviewStats(ctx context.Context, mangaID int64) (*Review
 		if isNoDataError(err) {
 			return &ReviewStats{}, nil
 		}
+		log.Printf("comment.repository.GetReviewStats: query failed manga_id=%d err=%v", mangaID, err)
 		return nil, err
 	}
 	stats.AverageRating = float64(int(stats.AverageRating*100+0.5)) / 100

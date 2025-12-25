@@ -7,6 +7,7 @@ type Review struct {
 	ReviewID  int64     `json:"review_id"`
 	UserID    int64     `json:"user_id"`
 	Username  string    `json:"username"`
+	AvatarURL string    `json:"avatar_url,omitempty"`
 	MangaID   int64     `json:"manga_id"`
 	Rating    int       `json:"rating"`
 	Content   string    `json:"content"`
@@ -32,17 +33,6 @@ type CreateReviewResponse struct {
 	Review  *Review `json:"review"`
 }
 
-// GetReviewsResponse represents paginated review listing
-type GetReviewsResponse struct {
-	Reviews       []Review `json:"reviews"`
-	Total         int      `json:"total"`
-	Page          int      `json:"page"`
-	Limit         int      `json:"limit"`
-	Pages         int      `json:"pages"`
-	AverageRating float64  `json:"average_rating"`
-	TotalReviews  int      `json:"total_reviews"`
-}
-
 // UpdateReviewRequest captures partial review updates
 type UpdateReviewRequest struct {
 	Rating  *int    `json:"rating"`
@@ -53,6 +43,19 @@ type UpdateReviewRequest struct {
 type UpdateReviewResponse struct {
 	Message string  `json:"message"`
 	Review  *Review `json:"review"`
+}
+
+// GetReviewsResponse represents paginated review listing
+type GetReviewsResponse struct {
+	Data []Review    `json:"data"`
+	Meta ReviewsMeta `json:"meta"`
+}
+
+// ReviewsMeta contains pagination information
+type ReviewsMeta struct {
+	Page  int `json:"page"`
+	Limit int `json:"limit"`
+	Total int `json:"total"`
 }
 
 // DeleteReviewResponse acknowledges review deletion

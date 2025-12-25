@@ -108,28 +108,36 @@ func (s *Service) CreateReview(ctx context.Context, userID, mangaID int64, req C
 
 // GetReviews returns paginated review list
 func (s *Service) GetReviews(ctx context.Context, mangaID int64, page, limit int, sortBy string) (*GetReviewsResponse, error) {
-	reviews, total, err := s.repo.GetReviews(ctx, mangaID, page, limit, sortBy)
+	page, limit = normalizePagination(page, limit)
+
+	reviews, total, err := s.repo.GetReviewsByMangaID(ctx, mangaID, page, limit, sortBy)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
 	}
 
-	stats, err := s.repo.GetReviewStats(ctx, mangaID)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
-	}
-
-	pages := 0
-	if limit > 0 {
-		pages = (total + limit - 1) / limit
+	if reviews == nil {
+		reviews = []Review{}
 	}
 
 	return &GetReviewsResponse{
-		Reviews:       reviews,
-		Total:         total,
-		Page:          page,
-		Limit:         limit,
-		Pages:         pages,
-		AverageRating: stats.AverageRating,
-		TotalReviews:  stats.TotalReviews,
+		Data: reviews,
+		Meta: ReviewsMeta{
+			Page:  page,
+			Limit: limit,
+			Total: total,
+		},
 	}, nil
+}
+
+func normalizePagination(page, limit int) (int, int) {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	return page, limit
 }

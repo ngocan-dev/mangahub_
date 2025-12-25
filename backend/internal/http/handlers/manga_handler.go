@@ -338,8 +338,21 @@ func (h *MangaHandler) GetReviews(c *gin.Context) {
 		return
 	}
 
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	page, err := strconv.Atoi(c.DefaultQuery("page", "1"))
+	if err != nil || page <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid page parameter"})
+		return
+	}
+
+	limit, err := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	if err != nil || limit <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid limit parameter"})
+		return
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
 	sortBy := c.DefaultQuery("sort_by", "recent")
 
 	resp, err := h.reviewService.GetReviews(c.Request.Context(), mangaID, page, limit, sortBy)
@@ -348,6 +361,7 @@ func (h *MangaHandler) GetReviews(c *gin.Context) {
 		if errors.Is(err, comment.ErrDatabaseError) {
 			status = http.StatusInternalServerError
 		}
+		log.Printf("handler.GetReviews: manga_id=%d page=%d limit=%d err=%v", mangaID, page, limit, err)
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
