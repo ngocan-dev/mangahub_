@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -335,9 +336,18 @@ func (h *MangaHandler) GetFriendsActivityFeed(c *gin.Context) {
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 
+	log.Printf("handler.GetFriendsActivityFeed: user_id=%d page=%d limit=%d", userID, page, limit)
 	resp, err := h.historyService.GetFriendsActivityFeed(c.Request.Context(), userID, page, limit)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		status := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, history.ErrNoData):
+			status = http.StatusNotFound
+		case errors.Is(err, history.ErrDatabaseError):
+			status = http.StatusInternalServerError
+		}
+		log.Printf("handler.GetFriendsActivityFeed: user_id=%d error=%v", userID, err)
+		c.JSON(status, gin.H{"error": "unable to load friends activity"})
 		return
 	}
 
@@ -352,9 +362,18 @@ func (h *MangaHandler) GetReadingStatistics(c *gin.Context) {
 	}
 
 	force := c.Query("force") == "true"
+	log.Printf("handler.GetReadingStatistics: user_id=%d force=%t", userID, force)
 	stats, err := h.historyService.GetReadingStatistics(c.Request.Context(), userID, force)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		status := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, history.ErrNoData):
+			status = http.StatusNotFound
+		case errors.Is(err, history.ErrDatabaseError):
+			status = http.StatusInternalServerError
+		}
+		log.Printf("handler.GetReadingStatistics: user_id=%d error=%v", userID, err)
+		c.JSON(status, gin.H{"error": "unable to load reading statistics"})
 		return
 	}
 
@@ -370,13 +389,23 @@ func (h *MangaHandler) GetReadingAnalytics(c *gin.Context) {
 
 	var req history.ReadingAnalyticsRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
+		log.Printf("handler.GetReadingAnalytics: bind error user_id=%d err=%v", userID, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid analytics parameters"})
 		return
 	}
 
+	log.Printf("handler.GetReadingAnalytics: user_id=%d time_period=%s", userID, req.TimePeriod)
 	stats, err := h.historyService.GetReadingAnalytics(c.Request.Context(), userID, req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		status := http.StatusInternalServerError
+		switch {
+		case errors.Is(err, history.ErrNoData):
+			status = http.StatusNotFound
+		case errors.Is(err, history.ErrDatabaseError):
+			status = http.StatusInternalServerError
+		}
+		log.Printf("handler.GetReadingAnalytics: user_id=%d error=%v", userID, err)
+		c.JSON(status, gin.H{"error": "unable to load reading analytics"})
 		return
 	}
 
