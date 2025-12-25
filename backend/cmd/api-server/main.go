@@ -251,6 +251,7 @@ func main() {
 	r.POST("/friends/requests/accept", authHandler.RequireAuth, friendHandler.AcceptRequest)
 
 	// Route: Get Popular Manga (cached)
+	r.GET("/manga/popular", mangaHandler.GetPopularManga)
 	r.GET("/mangas/popular", mangaHandler.GetPopularManga)
 
 	// Route: Search Manga
