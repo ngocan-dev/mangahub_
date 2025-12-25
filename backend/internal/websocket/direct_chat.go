@@ -43,6 +43,10 @@ func (h *DirectChatHub) HandleDirectChat(w http.ResponseWriter, r *http.Request,
 		http.Error(w, "invalid friend_id", http.StatusBadRequest)
 		return
 	}
+	if friendID == userID {
+		http.Error(w, "cannot chat with yourself", http.StatusBadRequest)
+		return
+	}
 
 	if !h.areFriends(r.Context(), userID, friendID) {
 		http.Error(w, "not friends", http.StatusForbidden)
