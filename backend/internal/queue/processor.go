@@ -57,20 +57,18 @@ func (p *WriteProcessor) processAddToLibrary(ctx context.Context, op WriteOperat
 	// Create repository and add to library
 	libraryRepo := libraryrepository.NewRepository(p.db)
 
-	// Check if already exists
-	exists, err := libraryRepo.CheckLibraryExists(ctx, op.UserID, op.MangaID)
-	if err != nil {
-		return err
-	}
-	if exists {
-		return nil // Already exists, skip
-	}
-
 	if currentChapter < 1 {
 		currentChapter = 1
 	}
 
-	return libraryRepo.AddToLibrary(ctx, op.UserID, op.MangaID, status, currentChapter)
+	duplicate, err := libraryRepo.AddToLibrary(ctx, op.UserID, op.MangaID, status, currentChapter)
+	if err != nil {
+		return err
+	}
+	if duplicate {
+		return nil
+	}
+	return nil
 }
 
 // processUpdateProgress processes an update progress operation

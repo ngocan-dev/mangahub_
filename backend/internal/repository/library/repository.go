@@ -10,11 +10,6 @@ import (
 	domainlibrary "github.com/ngocan-dev/mangahub/backend/domain/library"
 )
 
-var (
-	// ErrDuplicateEntry indicates a unique constraint violation when inserting a library entry
-	ErrDuplicateEntry = errors.New("library entry already exists")
-)
-
 // Repository handles persistence for library operations
 type Repository struct {
 	db *sql.DB
@@ -35,8 +30,9 @@ func (r *Repository) CheckLibraryExists(ctx context.Context, userID, mangaID int
 	return count > 0, nil
 }
 
-// AddToLibrary inserts both library entry and initial progress transactionally
-func (r *Repository) AddToLibrary(ctx context.Context, userID, mangaID int64, status string, currentChapter int) error {
+// AddToLibrary inserts both library entry and initial progress transactionally.
+// It returns true when the manga already exists in the user's library.
+func (r *Repository) AddToLibrary(ctx context.Context, userID, mangaID int64, status string, currentChapter int) (bool, error) {
 	now := time.Now()
 	if _, err := r.db.ExecContext(ctx, `
 INSERT INTO user_library (user_id, manga_id, status, current_chapter, created_at, updated_at)
@@ -44,9 +40,9 @@ VALUES (?, ?, ?, ?, ?, ?)
 `, userID, mangaID, status, currentChapter, now, now); err != nil {
 		var mysqlErr *mysql.MySQLError
 		if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
-			return ErrDuplicateEntry
+			return true, nil
 		}
-		return err
+		return false, err
 	}
 
 	var chapterID *int64
@@ -64,10 +60,10 @@ INSERT INTO reading_progress (user_id, manga_id, current_chapter_id, last_read_a
 VALUES (?, ?, ?, ?, 0, 0)
 ON DUPLICATE KEY UPDATE current_chapter_id = VALUES(current_chapter_id), last_read_at = VALUES(last_read_at)
 `, userID, mangaID, chapterID, now); err != nil {
-		return err
+		return false, err
 	}
 
-	return nil
+	return false, nil
 }
 
 // GetLibraryStatus fetches user's library status for manga
