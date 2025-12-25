@@ -15,11 +15,11 @@ func NewRepository(db *sql.DB) *Repository {
 }
 
 type User struct {
-	ID        int64
-	Username  string
-	Email     string
-	Password  string
-	AvatarURL string
+	ID        int64  `json:"id"`
+	Username  string `json:"username"`
+	Email     string `json:"email"`
+	Password  string `json:"-"`
+	AvatarURL string `json:"avatar,omitempty"`
 }
 
 // Create inserts new user into SQLite DB
