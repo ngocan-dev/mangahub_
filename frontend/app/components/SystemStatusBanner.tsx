@@ -38,8 +38,17 @@ export default function SystemStatusBanner() {
         setServerStatus(server);
         setSyncStatus(sync);
       } catch (err) {
-        setError("Unable to contact MangaHub backend right now.");
         console.error(err);
+        if (err instanceof Error && "response" in err && typeof err.response === "object") {
+          const status = (err as { response?: { status?: number } }).response?.status;
+          if (!status || status >= 500) {
+            setError("Unable to contact MangaHub backend right now.");
+          } else {
+            setError("Status check failed. Please try again.");
+          }
+        } else {
+          setError("Unable to contact MangaHub backend right now.");
+        }
       }
     };
 
