@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { ENV } from "@/config/env";
+import { useAuth } from "@/context/AuthContext";
 import ProtectedRoute from "../components/ProtectedRoute";
 import { friendService, type FriendRequest, type UserSummary } from "@/service/friend.service";
 
@@ -13,6 +15,7 @@ type DirectMessage = {
 };
 
 export default function FriendsPage() {
+  const { token } = useAuth();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<UserSummary[]>([]);
   const [friends, setFriends] = useState<UserSummary[]>([]);
@@ -141,7 +144,17 @@ export default function FriendsPage() {
     setChatMessages([]);
     setChatError(null);
 
-    const ws = new WebSocket(`ws://localhost:8080/ws/chat?friend_id=${friend.id}`);
+    if (!token) {
+      setChatError("Authentication required to start chat.");
+      return;
+    }
+
+    const wsBase = ENV.API_BASE_URL.replace(/^http/i, "ws");
+    const wsUrl = new URL("/ws/chat", wsBase.endsWith("/") ? wsBase : `${wsBase}/`);
+    wsUrl.searchParams.set("friend_id", String(friend.id));
+    wsUrl.searchParams.set("token", token);
+
+    const ws = new WebSocket(wsUrl.toString());
     socketRef.current = ws;
 
     ws.onmessage = (event) => {
@@ -153,7 +166,10 @@ export default function FriendsPage() {
       }
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+      if (event.code === 1000 || !token) {
+        return;
+      }
       reconnectRef.current = setTimeout(() => connectChat(friend), 1500);
     };
 

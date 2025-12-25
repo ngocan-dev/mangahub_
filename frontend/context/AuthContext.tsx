@@ -59,27 +59,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string) => {
     setLoading(true);
-    const data = await authService.login({ email, password });
+    try {
+      const data = await authService.login({ email, password });
 
-    setToken(data.token);
-    setUser(data.user);
-    persistToken(data.token);
-    setLoading(false);
+      setToken(data.token);
+      setUser(data.user);
+      persistToken(data.token);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const register = useCallback(
     async (username: string, email: string, password: string) => {
       setLoading(true);
-      const data = await authService.register({
-        username,
-        email,
-        password,
-      });
+      try {
+        const data = await authService.register({
+          username,
+          email,
+          password,
+        });
 
-      setToken(data.token);
-      setUser(data.user);
-      persistToken(data.token);
-      setLoading(false);
+        setToken(data.token);
+        setUser(data.user);
+        persistToken(data.token);
+      } finally {
+        setLoading(false);
+      }
     },
     [],
   );

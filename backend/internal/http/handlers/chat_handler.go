@@ -16,7 +16,7 @@ func NewChatHandler(hub *ws.DirectChatHub) *ChatHandler {
 }
 
 func (h *ChatHandler) Serve(c *gin.Context) {
-	userIDAny, exists := c.Get("userID")
+	userIDAny, exists := c.Get("user_id")
 	if !exists {
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return

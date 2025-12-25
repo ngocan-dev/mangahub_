@@ -250,6 +250,7 @@ func main() {
 
 	// Login
 	r.POST("/login", authHandler.Login)
+	r.GET("/me", authHandler.RequireAuth, authHandler.Me)
 
 	// Friend management
 	r.GET("/users/search", authHandler.RequireAuth, friendHandler.Search)

@@ -13,6 +13,7 @@ import (
 	sqliteLib "modernc.org/sqlite/lib"
 
 	"github.com/ngocan-dev/mangahub/backend/domain/user"
+	"github.com/ngocan-dev/mangahub/backend/internal/auth"
 	"github.com/ngocan-dev/mangahub/backend/internal/security"
 )
 
@@ -91,7 +92,17 @@ func (h *UserHandler) Register(c *gin.Context) {
 	}
 
 	// Step 5: success
-	c.JSON(http.StatusCreated, u)
+	token, err := auth.GenerateToken(u.ID, u.Username, u.Email)
+	if err != nil {
+		log.Printf("register: token generation failed user_id=%d: %v", u.ID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not create session token"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, user.LoginResponse{
+		Token: token,
+		User:  u,
+	})
 }
 
 func isValidationError(err error) bool {
