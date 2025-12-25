@@ -12,6 +12,7 @@ import (
 
 	dbpkg "github.com/ngocan-dev/mangahub/backend/db"
 	"github.com/ngocan-dev/mangahub/backend/domain/friend"
+	"github.com/ngocan-dev/mangahub/backend/domain/user"
 	"github.com/ngocan-dev/mangahub/backend/internal/auth"
 	"github.com/ngocan-dev/mangahub/backend/internal/cache"
 	"github.com/ngocan-dev/mangahub/backend/internal/config"
@@ -172,8 +173,9 @@ func main() {
 	mangaHandler.SetWriteQueue(writeQueue)
 	chapterHandler := handlers.NewChapterHandler(db)
 
+	userRepo := user.NewRepository(db)
 	friendRepo := friend.NewRepository(db)
-	friendService := friend.NewService(friendRepo, nil)
+	friendService := friend.NewService(friendRepo, userRepo, nil)
 	friendHandler := handlers.NewFriendHandler(friendService)
 	chatHub := ws.NewDirectChatHub(db)
 	chatHandler := handlers.NewChatHandler(chatHub)
