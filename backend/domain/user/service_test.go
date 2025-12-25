@@ -25,12 +25,13 @@ func setupTestDB(t *testing.T) *sql.DB {
 	})
 
 	schema := `
-CREATE TABLE Users (
-    UserId INTEGER PRIMARY KEY AUTOINCREMENT,
-    Username TEXT NOT NULL UNIQUE,
-    PasswordHash TEXT NOT NULL,
-    Email TEXT NOT NULL UNIQUE,
-    Created_Date DATETIME DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );`
 
 	if _, err := db.Exec(schema); err != nil {
@@ -48,7 +49,7 @@ func createTestUser(t *testing.T, db *sql.DB, username, email, password string) 
 		t.Fatalf("failed to hash password: %v", err)
 	}
 
-	res, err := db.Exec(`INSERT INTO Users (Username, Email, PasswordHash) VALUES (?, ?, ?)`, username, email, string(hashed))
+	res, err := db.Exec(`INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)`, username, email, string(hashed))
 	if err != nil {
 		t.Fatalf("failed to insert user: %v", err)
 	}
