@@ -20,33 +20,48 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
+func (r *Repository) tableExists(ctx context.Context, name string) (bool, error) {
+	var count int
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, name).Scan(&count); err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 // GetReadingSummary returns lean statistics for a user.
 func (r *Repository) GetReadingSummary(ctx context.Context, userID int64) (*ReadingSummary, error) {
 	query := `
-WITH rp AS (
+WITH library_stats AS (
     SELECT
-        COALESCE(SUM(Current_Chapter), 0) AS total_chapters_read,
-        COALESCE(COUNT(DISTINCT Novel_Id), 0) AS total_manga,
-        MAX(Last_Read_At) AS last_read_at
-    FROM Reading_Progress
-    WHERE User_Id = ?
+        COUNT(DISTINCT manga_id) AS total_manga
+    FROM libraries
+    WHERE user_id = ?
 ),
-rs AS (
-    SELECT COALESCE(Current_Streak_Days, 0) AS reading_streak
-    FROM Reading_Statistics
-    WHERE User_Id = ?
+history_stats AS (
+    SELECT
+        MAX(created_at) AS last_read_at,
+        SUM(CASE WHEN event_type = 'finished_chapter' THEN 1 ELSE 0 END) AS chapters_read
+    FROM reading_history
+    WHERE user_id = ?
+),
+progress_stats AS (
+    SELECT MAX(last_read_at) AS last_read_at
+    FROM reading_progress
+    WHERE user_id = ?
 )
 SELECT
-    COALESCE(rp.total_manga, 0) AS total_manga,
-    COALESCE(rp.total_chapters_read, 0) AS total_chapters_read,
-    COALESCE((SELECT reading_streak FROM rs LIMIT 1), 0) AS reading_streak,
-    rp.last_read_at
-FROM rp
+    COALESCE(ls.total_manga, 0) AS total_manga,
+    COALESCE(hs.chapters_read, 0) AS total_chapters_read,
+    0 AS reading_streak,
+    COALESCE(hs.last_read_at, ps.last_read_at)
+FROM library_stats ls
+CROSS JOIN history_stats hs
+CROSS JOIN progress_stats ps
 LIMIT 1
 `
 	var summary ReadingSummary
 	var lastReadAt sql.NullTime
-	if err := r.db.QueryRowContext(ctx, query, userID, userID).Scan(
+	if err := r.db.QueryRowContext(ctx, query, userID, userID, userID).Scan(
 		&summary.TotalManga,
 		&summary.TotalChaptersRead,
 		&summary.ReadingStreak,
@@ -81,9 +96,9 @@ func (r *Repository) GetReadingAnalyticsBuckets(ctx context.Context, userID int6
 		{
 			dest: &resp.Daily,
 			sql: `
-            SELECT date(Last_Read_At) AS bucket_date, COALESCE(SUM(Current_Chapter), 0) AS chapters_read
-            FROM Reading_Progress
-            WHERE User_Id = ?
+            SELECT date(created_at) AS bucket_date, COUNT(*) AS chapters_read
+            FROM reading_history
+            WHERE user_id = ?
             GROUP BY bucket_date
             ORDER BY bucket_date DESC
             LIMIT 30
@@ -92,9 +107,9 @@ func (r *Repository) GetReadingAnalyticsBuckets(ctx context.Context, userID int6
 		{
 			dest: &resp.Weekly,
 			sql: `
-            SELECT date(Last_Read_At, 'weekday 0', '-6 days') AS bucket_date, COALESCE(SUM(Current_Chapter), 0) AS chapters_read
-            FROM Reading_Progress
-            WHERE User_Id = ?
+            SELECT date(created_at, 'weekday 0', '-6 days') AS bucket_date, COUNT(*) AS chapters_read
+            FROM reading_history
+            WHERE user_id = ?
             GROUP BY bucket_date
             ORDER BY bucket_date DESC
             LIMIT 12
@@ -103,9 +118,9 @@ func (r *Repository) GetReadingAnalyticsBuckets(ctx context.Context, userID int6
 		{
 			dest: &resp.Monthly,
 			sql: `
-            SELECT strftime('%Y-%m-01', Last_Read_At) AS bucket_date, COALESCE(SUM(Current_Chapter), 0) AS chapters_read
-            FROM Reading_Progress
-            WHERE User_Id = ?
+            SELECT strftime('%Y-%m-01', created_at) AS bucket_date, COUNT(*) AS chapters_read
+            FROM reading_history
+            WHERE user_id = ?
             GROUP BY bucket_date
             ORDER BY bucket_date DESC
             LIMIT 12
@@ -149,9 +164,13 @@ func (r *Repository) GetReadingAnalyticsBuckets(ctx context.Context, userID int6
 // GetUserProgress retrieves progress record
 func (r *Repository) GetUserProgress(ctx context.Context, userID, mangaID int64) (*UserProgress, error) {
 	query := `
-        SELECT Current_Chapter, Current_Chapter_Id, Last_Read_At
-        FROM Reading_Progress
-        WHERE User_Id = ? AND Novel_Id = ?
+        SELECT
+            COALESCE(c.number, 0) as current_chapter,
+            rp.current_chapter_id,
+            rp.last_read_at
+        FROM reading_progress rp
+        LEFT JOIN chapters c ON rp.current_chapter_id = c.id
+        WHERE rp.user_id = ? AND rp.manga_id = ?
     `
 	var progress UserProgress
 	var chapterID sql.NullInt64
@@ -174,11 +193,24 @@ func (r *Repository) GetUserProgress(ctx context.Context, userID, mangaID int64)
 
 // UpdateProgress updates progress table
 func (r *Repository) UpdateProgress(ctx context.Context, userID, mangaID int64, chapter int, chapterID *int64) error {
-	_, err := r.db.ExecContext(ctx, `
-UPDATE Reading_Progress
-SET Current_Chapter = ?, Current_Chapter_Id = ?, Last_Read_At = CURRENT_TIMESTAMP
-WHERE User_Id = ? AND Novel_Id = ?
-`, chapter, chapterID, userID, mangaID)
+	res, err := r.db.ExecContext(ctx, `
+UPDATE reading_progress
+SET current_chapter_id = ?, last_read_at = CURRENT_TIMESTAMP
+WHERE user_id = ? AND manga_id = ?
+`, chapterID, userID, mangaID)
+	if err != nil {
+		return err
+	}
+	if rows, _ := res.RowsAffected(); rows > 0 {
+		return nil
+	}
+	_, err = r.db.ExecContext(ctx, `
+INSERT INTO reading_progress (user_id, manga_id, current_chapter_id, last_read_at, progress_percent, current_page)
+VALUES (?, ?, ?, CURRENT_TIMESTAMP, 0, 0)
+ON CONFLICT(user_id, manga_id) DO UPDATE SET
+    current_chapter_id = excluded.current_chapter_id,
+    last_read_at = excluded.last_read_at
+`, userID, mangaID, chapterID)
 	return err
 }
 
@@ -187,8 +219,8 @@ func (r *Repository) IsMangaCompleted(ctx context.Context, userID, mangaID int64
 	var count int
 	err := r.db.QueryRowContext(ctx, `
 SELECT COUNT(*)
-FROM User_Library
-WHERE User_Id = ? AND Novel_Id = ? AND Status = 'completed'
+FROM libraries
+WHERE user_id = ? AND manga_id = ? AND status = 'completed'
 `, userID, mangaID).Scan(&count)
 	if err != nil {
 		return false, err
@@ -198,10 +230,18 @@ WHERE User_Id = ? AND Novel_Id = ? AND Status = 'completed'
 
 // GetFriends retrieves accepted friend IDs
 func (r *Repository) GetFriends(ctx context.Context, userID int64) ([]int64, error) {
+	exists, err := r.tableExists(ctx, "friends")
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		log.Printf("history.repository.GetFriends: friends table missing, returning empty list for user_id=%d", userID)
+		return []int64{}, nil
+	}
 	query := `
-        SELECT Friend_Id FROM Friends WHERE User_Id = ? AND Status = 'accepted'
+        SELECT friend_id FROM friends WHERE user_id = ? AND status = 'accepted'
         UNION
-        SELECT User_Id FROM Friends WHERE Friend_Id = ? AND Status = 'accepted'
+        SELECT user_id FROM friends WHERE friend_id = ? AND status = 'accepted'
     `
 	log.Printf("history.repository.GetFriends: querying friends for user_id=%d", userID)
 	rows, err := r.db.QueryContext(ctx, query, userID, userID)
@@ -242,26 +282,20 @@ func (r *Repository) GetFriendsActivities(ctx context.Context, userID int64, pag
 
 	countQuery := fmt.Sprintf(`
         SELECT COUNT(*) FROM (
-            SELECT ul.Completed_At as activity_date
-            FROM User_Library ul
-            WHERE ul.User_Id IN (%s) AND ul.Status = 'completed' AND ul.Completed_At IS NOT NULL
+            SELECT lib.completed_at as activity_date
+            FROM libraries lib
+            WHERE lib.user_id IN (%s) AND lib.status = 'completed' AND lib.completed_at IS NOT NULL
 
             UNION ALL
 
-            SELECT r.Created_At as activity_date
-            FROM Reviews r
-            WHERE r.User_Id IN (%s)
-
-            UNION ALL
-
-            SELECT rs.Rating_Date as activity_date
-            FROM Rating_System rs
-            WHERE rs.User_Id IN (%s)
+            SELECT rt.created_at as activity_date
+            FROM ratings rt
+            WHERE rt.user_id IN (%s)
         )
-	`, placeholderStr, placeholderStr, placeholderStr)
+	`, placeholderStr, placeholderStr)
 
 	var total int
-	countArgs := append(append(args, args...), args...)
+	countArgs := append(args, args...)
 	if err := r.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
 		if err == sql.ErrNoRows {
 			return []Activity{}, 0, nil
@@ -304,71 +338,50 @@ func (r *Repository) GetFriendsActivities(ctx context.Context, userID int64, pag
             created_at
         FROM (
             SELECT
-                ul.Library_Id as activity_id,
-                ul.User_Id as user_id,
-                u.Username as username,
+                lib.id as activity_id,
+                lib.user_id as user_id,
+                u.username as username,
                 'completed_manga' as activity_type,
-                ul.Novel_Id as manga_id,
-                n.Novel_Name as manga_name,
-                n.Title as manga_title,
-                n.Image as manga_image,
+                lib.manga_id as manga_id,
+                m.title as manga_name,
+                m.title as manga_title,
+                m.cover_url as manga_image,
                 NULL as rating,
                 NULL as review_id,
                 NULL as review_content,
-                ul.Completed_At as completed_at,
-                ul.Completed_At as created_at
-            FROM User_Library ul
-            JOIN Users u ON ul.User_Id = u.UserId
-            JOIN Novels n ON ul.Novel_Id = n.Novel_Id
-            WHERE ul.User_Id IN (%s) AND ul.Status = 'completed' AND ul.Completed_At IS NOT NULL
+                lib.completed_at as completed_at,
+                lib.completed_at as created_at
+            FROM libraries lib
+            JOIN users u ON lib.user_id = u.id
+            JOIN mangas m ON lib.manga_id = m.id
+            WHERE lib.user_id IN (%s) AND lib.status = 'completed' AND lib.completed_at IS NOT NULL
 
             UNION ALL
 
             SELECT
-                r.Review_Id as activity_id,
-                r.User_Id as user_id,
-                u.Username as username,
-                'review' as activity_type,
-                r.Novel_Id as manga_id,
-                n.Novel_Name as manga_name,
-                n.Title as manga_title,
-                n.Image as manga_image,
-                r.Rating as rating,
-                r.Review_Id as review_id,
-                substr(r.Content, 1, 200) as review_content,
-                NULL as completed_at,
-                r.Created_At as created_at
-            FROM Reviews r
-            JOIN Users u ON r.User_Id = u.UserId
-            JOIN Novels n ON r.Novel_Id = n.Novel_Id
-            WHERE r.User_Id IN (%s)
-
-            UNION ALL
-
-            SELECT
-                rs.Rating_Id as activity_id,
-                rs.User_Id as user_id,
-                u.Username as username,
+                rt.id as activity_id,
+                rt.user_id as user_id,
+                u.username as username,
                 'rating' as activity_type,
-                rs.Novel_Id as manga_id,
-                n.Novel_Name as manga_name,
-                n.Title as manga_title,
-                n.Image as manga_image,
-                rs.Rating as rating,
+                rt.manga_id as manga_id,
+                m.title as manga_name,
+                m.title as manga_title,
+                m.cover_url as manga_image,
+                rt.score as rating,
                 NULL as review_id,
-                NULL as review_content,
+                rt.review as review_content,
                 NULL as completed_at,
-                rs.Rating_Date as created_at
-            FROM Rating_System rs
-            JOIN Users u ON rs.User_Id = u.UserId
-            JOIN Novels n ON rs.Novel_Id = n.Novel_Id
-            WHERE rs.User_Id IN (%s)
+                rt.created_at as created_at
+            FROM ratings rt
+            JOIN users u ON rt.user_id = u.id
+            JOIN mangas m ON rt.manga_id = m.id
+            WHERE rt.user_id IN (%s)
         )
         ORDER BY created_at DESC
         LIMIT ? OFFSET ?
-    `, placeholderStr, placeholderStr, placeholderStr)
+    `, placeholderStr, placeholderStr)
 
-	rows, err := r.db.QueryContext(ctx, query, append(append(append(args, args...), args...), limit, offset)...)
+	rows, err := r.db.QueryContext(ctx, query, append(append(args, args...), limit, offset)...)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return []Activity{}, 0, nil
@@ -430,16 +443,15 @@ func (r *Repository) CalculateReadingStatistics(ctx context.Context, userID int6
 	log.Printf("history.repository.CalculateReadingStatistics: aggregating stats for user_id=%d", userID)
 	err := r.db.QueryRowContext(ctx, `
         SELECT
-            COALESCE(SUM(rp.Current_Chapter), 0) as total_chapters_read,
-            COUNT(DISTINCT CASE WHEN ul.Status = 'completed' THEN ul.Novel_Id END) as total_manga_read,
-            COUNT(DISTINCT CASE WHEN ul.Status = 'reading' THEN ul.Novel_Id END) as total_manga_reading,
-            COUNT(DISTINCT CASE WHEN ul.Status = 'plan_to_read' THEN ul.Novel_Id END) as total_manga_planned,
-            COALESCE(AVG(rs.Rating), 0) as average_rating
-        FROM User_Library ul
-        LEFT JOIN Reading_Progress rp ON ul.User_Id = rp.User_Id AND ul.Novel_Id = rp.Novel_Id
-        LEFT JOIN Rating_System rs ON ul.User_Id = rs.User_Id AND ul.Novel_Id = rs.Novel_Id
-        WHERE ul.User_Id = ?
-    `, userID).Scan(
+            (SELECT COALESCE(COUNT(*), 0) FROM reading_history WHERE user_id = ? AND event_type = 'finished_chapter') AS total_chapters_read,
+            COUNT(DISTINCT CASE WHEN lib.status = 'completed' THEN lib.manga_id END) as total_manga_read,
+            COUNT(DISTINCT CASE WHEN lib.status = 'reading' THEN lib.manga_id END) as total_manga_reading,
+            COUNT(DISTINCT CASE WHEN lib.status = 'plan_to_read' THEN lib.manga_id END) as total_manga_planned,
+            COALESCE(AVG(rt.score), 0) as average_rating
+        FROM libraries lib
+        LEFT JOIN ratings rt ON lib.user_id = rt.user_id AND lib.manga_id = rt.manga_id
+        WHERE lib.user_id = ?
+    `, userID, userID).Scan(
 		&stats.TotalChaptersRead,
 		&stats.TotalMangaRead,
 		&stats.TotalMangaReading,
@@ -452,39 +464,17 @@ func (r *Repository) CalculateReadingStatistics(ctx context.Context, userID int6
 
 	stats.AverageRating = float64(int(stats.AverageRating*100+0.5)) / 100
 
-	log.Printf("history.repository.CalculateReadingStatistics: querying favorite genres user_id=%d", userID)
-	rows, err := r.db.QueryContext(ctx, `
-        SELECT n.Genre, COUNT(*) as manga_count, COALESCE(SUM(rp.Current_Chapter), 0) as chapters_read
-        FROM User_Library ul
-        JOIN Novels n ON ul.Novel_Id = n.Novel_Id
-        LEFT JOIN Reading_Progress rp ON ul.User_Id = rp.User_Id AND ul.Novel_Id = rp.Novel_Id
-        WHERE ul.User_Id = ?
-        GROUP BY n.Genre
-        ORDER BY manga_count DESC, chapters_read DESC
-        LIMIT 5
-    `, userID)
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var stat GenreStat
-			if err := rows.Scan(&stat.Genre, &stat.Count, &stat.Chapters); err == nil {
-				stats.FavoriteGenres = append(stats.FavoriteGenres, stat)
-			}
-		}
-	}
-
 	stats.MonthlyStats = []MonthlyStat{}
 	log.Printf("history.repository.CalculateReadingStatistics: querying monthly stats user_id=%d", userID)
-	rows, err = r.db.QueryContext(ctx, `
+	rows, err := r.db.QueryContext(ctx, `
         SELECT
-            COALESCE(CAST(strftime('%Y', Last_Read_At) AS INTEGER), 0) as year,
-            COALESCE(CAST(strftime('%m', Last_Read_At) AS INTEGER), 0) as month,
-            COALESCE(SUM(Current_Chapter), 0) as chapters_read,
-            COALESCE(COUNT(DISTINCT CASE WHEN ul.Status = 'completed' THEN ul.Novel_Id END), 0) as manga_completed,
-            COALESCE(COUNT(DISTINCT CASE WHEN ul.Status = 'reading' THEN ul.Novel_Id END), 0) as manga_started
-        FROM Reading_Progress rp
-        JOIN User_Library ul ON rp.User_Id = ul.User_Id AND rp.Novel_Id = ul.Novel_Id
-        WHERE rp.User_Id = ?
+            COALESCE(CAST(strftime('%Y', created_at) AS INTEGER), 0) as year,
+            COALESCE(CAST(strftime('%m', created_at) AS INTEGER), 0) as month,
+            COALESCE(SUM(CASE WHEN event_type = 'finished_chapter' THEN 1 ELSE 0 END), 0) as chapters_read,
+            COALESCE(COUNT(DISTINCT CASE WHEN event_type = 'finished_manga' THEN manga_id END), 0) as manga_completed,
+            COALESCE(COUNT(DISTINCT CASE WHEN event_type = 'opened' THEN manga_id END), 0) as manga_started
+        FROM reading_history
+        WHERE user_id = ?
         GROUP BY year, month
         ORDER BY year DESC, month DESC
         LIMIT 12
@@ -505,14 +495,13 @@ func (r *Repository) CalculateReadingStatistics(ctx context.Context, userID int6
 	log.Printf("history.repository.CalculateReadingStatistics: querying yearly stats user_id=%d", userID)
 	rows, err = r.db.QueryContext(ctx, `
         SELECT
-            COALESCE(CAST(strftime('%Y', Last_Read_At) AS INTEGER), 0) as year,
-            COALESCE(SUM(Current_Chapter), 0) as chapters_read,
-            COALESCE(COUNT(DISTINCT CASE WHEN ul.Status = 'completed' THEN ul.Novel_Id END), 0) as manga_completed,
-            COALESCE(COUNT(DISTINCT CASE WHEN ul.Status = 'reading' THEN ul.Novel_Id END), 0) as manga_started,
-            COALESCE(COUNT(DISTINCT date(Last_Read_At)), 0) as total_days
-        FROM Reading_Progress rp
-        JOIN User_Library ul ON rp.User_Id = ul.User_Id AND rp.Novel_Id = ul.Novel_Id
-        WHERE rp.User_Id = ?
+            COALESCE(CAST(strftime('%Y', created_at) AS INTEGER), 0) as year,
+            COALESCE(SUM(CASE WHEN event_type = 'finished_chapter' THEN 1 ELSE 0 END), 0) as chapters_read,
+            COALESCE(COUNT(DISTINCT CASE WHEN event_type = 'finished_manga' THEN manga_id END), 0) as manga_completed,
+            COALESCE(COUNT(DISTINCT CASE WHEN event_type = 'opened' THEN manga_id END), 0) as manga_started,
+            COALESCE(COUNT(DISTINCT date(created_at)), 0) as total_days
+        FROM reading_history
+        WHERE user_id = ?
         GROUP BY year
         ORDER BY year DESC
         LIMIT 5
@@ -552,25 +541,25 @@ func (r *Repository) SaveReadingStatistics(ctx context.Context, stats *ReadingSt
 	}
 
 	_, err = r.db.ExecContext(ctx, `
-INSERT INTO Reading_Statistics (
-    User_Id, Total_Chapters_Read, Total_Manga_Read, Total_Manga_Reading,
-    Total_Manga_Planned, Favorite_Genres, Average_Rating, Total_Reading_Time_Hours,
-    Current_Streak_Days, Longest_Streak_Days, Monthly_Stats, Yearly_Stats,
-    Last_Calculated_At
+INSERT INTO reading_statistics (
+    user_id, total_chapters_read, total_manga_read, total_manga_reading,
+    total_manga_planned, favorite_genres, average_rating, total_reading_time_hours,
+    current_streak_days, longest_streak_days, monthly_stats, yearly_stats,
+    last_calculated_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(User_Id) DO UPDATE SET
-    Total_Chapters_Read = excluded.Total_Chapters_Read,
-    Total_Manga_Read = excluded.Total_Manga_Read,
-    Total_Manga_Reading = excluded.Total_Manga_Reading,
-    Total_Manga_Planned = excluded.Total_Manga_Planned,
-    Favorite_Genres = excluded.Favorite_Genres,
-    Average_Rating = excluded.Average_Rating,
-    Total_Reading_Time_Hours = excluded.Total_Reading_Time_Hours,
-    Current_Streak_Days = excluded.Current_Streak_Days,
-    Longest_Streak_Days = excluded.Longest_Streak_Days,
-    Monthly_Stats = excluded.Monthly_Stats,
-    Yearly_Stats = excluded.Yearly_Stats,
-    Last_Calculated_At = excluded.Last_Calculated_At
+    ON CONFLICT(user_id) DO UPDATE SET
+    total_chapters_read = excluded.total_chapters_read,
+    total_manga_read = excluded.total_manga_read,
+    total_manga_reading = excluded.total_manga_reading,
+    total_manga_planned = excluded.total_manga_planned,
+    favorite_genres = excluded.favorite_genres,
+    average_rating = excluded.average_rating,
+    total_reading_time_hours = excluded.total_reading_time_hours,
+    current_streak_days = excluded.current_streak_days,
+    longest_streak_days = excluded.longest_streak_days,
+    monthly_stats = excluded.monthly_stats,
+    yearly_stats = excluded.yearly_stats,
+    last_calculated_at = excluded.last_calculated_at
     )
 `,
 		stats.UserID,
@@ -594,20 +583,20 @@ INSERT INTO Reading_Statistics (
 func (r *Repository) GetCachedReadingStatistics(ctx context.Context, userID int64) (*ReadingStatistics, error) {
 	query := `
         SELECT
-            Total_Chapters_Read,
-            Total_Manga_Read,
-            Total_Manga_Reading,
-            Total_Manga_Planned,
-            Favorite_Genres,
-            Average_Rating,
-            Total_Reading_Time_Hours,
-            Current_Streak_Days,
-            Longest_Streak_Days,
-            Monthly_Stats,
-            Yearly_Stats,
-            Last_Calculated_At
-        FROM Reading_Statistics
-        WHERE User_Id = ?
+            total_chapters_read,
+            total_manga_read,
+            total_manga_reading,
+            total_manga_planned,
+            favorite_genres,
+            average_rating,
+            total_reading_time_hours,
+            current_streak_days,
+            longest_streak_days,
+            monthly_stats,
+            yearly_stats,
+            last_calculated_at
+        FROM reading_statistics
+        WHERE user_id = ?
     `
 	var stats ReadingStatistics
 	var favoriteGenresJSON, monthlyStatsJSON, yearlyStatsJSON sql.NullString
@@ -654,14 +643,14 @@ func (r *Repository) GetCachedReadingStatistics(ctx context.Context, userID int6
 // UpdateReadingGoalProgress updates goal progress values
 func (r *Repository) UpdateReadingGoalProgress(ctx context.Context, userID int64) error {
 	_, err := r.db.ExecContext(ctx, `
-        UPDATE Reading_Goals
-        SET Current_Value = (
-            SELECT COALESCE(SUM(rp.Current_Chapter), 0)
-            FROM Reading_Progress rp
-            WHERE rp.User_Id = Reading_Goals.User_Id
+        UPDATE reading_goals
+        SET current_value = (
+            SELECT COALESCE(COUNT(*), 0)
+            FROM reading_history rh
+            WHERE rh.user_id = reading_goals.user_id AND rh.event_type = 'finished_chapter'
         ),
-        Updated_At = CURRENT_TIMESTAMP
-        WHERE User_Id = ?
+        updated_at = CURRENT_TIMESTAMP
+        WHERE user_id = ?
     `, userID)
 	return err
 }
@@ -669,9 +658,9 @@ func (r *Repository) UpdateReadingGoalProgress(ctx context.Context, userID int64
 // GetActiveReadingGoals retrieves goals still active
 func (r *Repository) GetActiveReadingGoals(ctx context.Context, userID int64) ([]ReadingGoal, error) {
 	rows, err := r.db.QueryContext(ctx, `
-        SELECT Goal_Id, User_Id, Goal_Type, Target_Value, Current_Value, Start_Date, End_Date, Completed, Created_At, Updated_At
-        FROM Reading_Goals
-        WHERE User_Id = ? AND Completed = 0
+        SELECT id, user_id, goal_type, target_value, current_value, period_start, period_end, status, created_at, updated_at
+        FROM reading_goals
+        WHERE user_id = ? AND status = 'active'
     `, userID)
 	if err != nil {
 		return nil, err
@@ -681,6 +670,7 @@ func (r *Repository) GetActiveReadingGoals(ctx context.Context, userID int64) ([
 	var goals []ReadingGoal
 	for rows.Next() {
 		var goal ReadingGoal
+		var status string
 		if err := rows.Scan(
 			&goal.GoalID,
 			&goal.UserID,
@@ -689,10 +679,11 @@ func (r *Repository) GetActiveReadingGoals(ctx context.Context, userID int64) ([
 			&goal.CurrentValue,
 			&goal.StartDate,
 			&goal.EndDate,
-			&goal.Completed,
+			&status,
 			&goal.CreatedAt,
 			&goal.UpdatedAt,
 		); err == nil {
+			goal.Completed = status == "completed"
 			goals = append(goals, goal)
 		}
 	}
