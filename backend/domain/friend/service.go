@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ngocan-dev/mangahub/backend/domain/user"
 	"github.com/ngocan-dev/mangahub/backend/internal/security"
 )
 
@@ -40,15 +41,16 @@ func (noopNotifier) NotifyFriendAccepted(ctx context.Context, requesterID int64,
 // Service orchestrates friend workflows
 type Service struct {
 	repo     *Repository
+	userRepo *user.Repository
 	notifier Notifier
 }
 
 // NewService builds a friend service
-func NewService(repo *Repository, notifier Notifier) *Service {
+func NewService(repo *Repository, userRepo *user.Repository, notifier Notifier) *Service {
 	if notifier == nil {
 		notifier = noopNotifier{}
 	}
-	return &Service{repo: repo, notifier: notifier}
+	return &Service{repo: repo, userRepo: userRepo, notifier: notifier}
 }
 
 // SearchUsers looks up users by username or email, tolerating empty datasets.
@@ -82,7 +84,7 @@ func (s *Service) SearchUser(ctx context.Context, username string) (*UserSummary
 		return nil, fmt.Errorf("%w: %v", ErrInvalidUsername, err)
 	}
 
-	user, err := s.repo.FindUserByUsername(ctx, username)
+	user, err := s.userRepo.FindByUsernameOrEmail(ctx, username)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +92,12 @@ func (s *Service) SearchUser(ctx context.Context, username string) (*UserSummary
 		return nil, ErrUserNotFound
 	}
 
-	return user, nil
+	return &UserSummary{
+		ID:        user.ID,
+		Username:  user.Username,
+		Email:     user.Email,
+		AvatarURL: user.AvatarURL,
+	}, nil
 }
 
 // SendFriendRequest sends a pending friend invitation to the target user id.
