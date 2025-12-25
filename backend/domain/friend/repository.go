@@ -20,7 +20,7 @@ type Repository struct {
 
 // NewRepository builds a friend repository
 func NewRepository(db *sql.DB) *Repository {
-	return &Repository{db: db, friendIDColumn: "friend_user_id"}
+	return &Repository{db: db, friendIDColumn: "friend_id"}
 }
 
 // FindUsersByQuery searches users by username or email (case-insensitive) excluding self and existing friends.
@@ -87,14 +87,16 @@ func (r *Repository) AreFriends(ctx context.Context, userID, friendID int64) (bo
 		return false, err
 	}
 
+	statusFilter := ""
+	if r.friendHasStatus {
+		statusFilter = " AND status = 'accepted'"
+	}
+
 	var count int
 	query := fmt.Sprintf(`
         SELECT COUNT(*) FROM friends
-        WHERE status = 'accepted' AND (
-            (user_id = ? AND %s = ?) OR
-            (user_id = ? AND %s = ?)
-        )
-    `, r.friendIDColumn, r.friendIDColumn)
+        WHERE ((user_id = ? AND %s = ?) OR (%s = ? AND user_id = ?))%s
+    `, r.friendIDColumn, r.friendIDColumn, r.friendIDColumn, statusFilter)
 
 	if err := r.db.QueryRowContext(ctx, query, userID, friendID, friendID, userID).Scan(&count); err != nil {
 		return false, err
@@ -280,15 +282,23 @@ func (r *Repository) ListFriends(ctx context.Context, userID int64) ([]UserSumma
 		return nil, err
 	}
 
-	query := fmt.Sprintf(`
-        SELECT u.id, u.username, u.email, COALESCE(u.avatar_url, '') as avatar_url
-        FROM friends f
-        JOIN users u ON u.id = f.%[1]s
-        WHERE f.user_id = ? AND f.status = 'accepted'
-        ORDER BY u.username
-    `, r.friendIDColumn)
+	statusFilter := ""
+	if r.friendHasStatus {
+		statusFilter = " AND status = 'accepted'"
+	}
 
-	rows, err := r.db.QueryContext(ctx, query, userID)
+	query := fmt.Sprintf(`
+        SELECT u.id, u.username, u.email, COALESCE(u.avatar_url, '') as avatar
+        FROM (
+            SELECT %[1]s AS friend_id FROM friends WHERE user_id = ?%[2]s
+            UNION
+            SELECT user_id AS friend_id FROM friends WHERE %[1]s = ?%[2]s
+        ) rel
+        JOIN users u ON u.id = rel.friend_id
+        ORDER BY u.username
+    `, r.friendIDColumn, statusFilter)
+
+	rows, err := r.db.QueryContext(ctx, query, userID, userID)
 	if err != nil {
 		if r.isUnknownColumnError(err, r.friendIDColumn) {
 			return nil, fmt.Errorf("friends table is missing expected column %q", r.friendIDColumn)
