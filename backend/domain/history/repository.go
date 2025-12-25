@@ -258,11 +258,14 @@ func (r *Repository) GetFriendsActivities(ctx context.Context, userID int64, pag
             FROM Rating_System rs
             WHERE rs.User_Id IN (%s)
         )
-    `, placeholderStr, placeholderStr, placeholderStr)
+	`, placeholderStr, placeholderStr, placeholderStr)
 
 	var total int
 	countArgs := append(append(args, args...), args...)
 	if err := r.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total); err != nil {
+		if err == sql.ErrNoRows {
+			return []Activity{}, 0, nil
+		}
 		log.Printf("history.repository.GetFriendsActivities: count query failed user_id=%d err=%v", userID, err)
 		return nil, 0, err
 	}
@@ -367,6 +370,9 @@ func (r *Repository) GetFriendsActivities(ctx context.Context, userID int64, pag
 
 	rows, err := r.db.QueryContext(ctx, query, append(append(append(args, args...), args...), limit, offset)...)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return []Activity{}, 0, nil
+		}
 		log.Printf("history.repository.GetFriendsActivities: list query failed user_id=%d err=%v", userID, err)
 		return nil, 0, err
 	}

@@ -344,6 +344,18 @@ func (h *MangaHandler) GetFriendsActivityFeed(c *gin.Context) {
 		return
 	}
 
+	if resp == nil {
+		resp = &history.ActivityFeedResponse{
+			Activities: []history.Activity{},
+			Total:      0,
+			Page:       page,
+			Limit:      limit,
+			Pages:      0,
+		}
+	} else if resp.Activities == nil {
+		resp.Activities = []history.Activity{}
+	}
+
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -367,6 +379,10 @@ func (h *MangaHandler) GetReadingStatistics(c *gin.Context) {
 		}
 		c.JSON(http.StatusOK, &history.ReadingSummary{})
 		return
+	}
+
+	if summary == nil {
+		summary = &history.ReadingSummary{}
 	}
 
 	c.JSON(http.StatusOK, summary)
@@ -401,6 +417,24 @@ func (h *MangaHandler) GetReadingAnalytics(c *gin.Context) {
 			Monthly: []history.ReadingAnalyticsPoint{},
 		})
 		return
+	}
+
+	if analytics == nil {
+		analytics = &history.ReadingAnalyticsResponse{
+			Daily:   []history.ReadingAnalyticsPoint{},
+			Weekly:  []history.ReadingAnalyticsPoint{},
+			Monthly: []history.ReadingAnalyticsPoint{},
+		}
+	} else {
+		if analytics.Daily == nil {
+			analytics.Daily = []history.ReadingAnalyticsPoint{}
+		}
+		if analytics.Weekly == nil {
+			analytics.Weekly = []history.ReadingAnalyticsPoint{}
+		}
+		if analytics.Monthly == nil {
+			analytics.Monthly = []history.ReadingAnalyticsPoint{}
+		}
 	}
 
 	c.JSON(http.StatusOK, analytics)

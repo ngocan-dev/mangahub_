@@ -15,6 +15,33 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
+// FindUsersByQuery searches users by username or email (case-insensitive).
+func (r *Repository) FindUsersByQuery(ctx context.Context, query string) ([]UserSummary, error) {
+	rows, err := r.db.QueryContext(ctx, `
+        SELECT UserId, Username
+        FROM Users
+        WHERE lower(Username) LIKE lower(?) OR lower(Email) LIKE lower(?)
+        LIMIT 20
+    `, "%"+query+"%", "%"+query+"%")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []UserSummary
+	for rows.Next() {
+		var user UserSummary
+		if err := rows.Scan(&user.ID, &user.Username); err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
 // FindUserByUsername returns a user summary by username (case-insensitive)
 func (r *Repository) FindUserByUsername(ctx context.Context, username string) (*UserSummary, error) {
 	row := r.db.QueryRowContext(ctx, `

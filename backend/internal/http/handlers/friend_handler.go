@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -23,27 +24,32 @@ func NewFriendHandler(service *friend.Service) *FriendHandler {
 
 // Search allows a user to look up another user by username
 func (h *FriendHandler) Search(c *gin.Context) {
-	username := strings.TrimSpace(c.Query("username"))
-	if username == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "username query is required"})
+	query := c.Query("query")
+	if query == "" {
+		query = c.Query("username")
+	}
+	query = strings.TrimSpace(query)
+	if query == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "query parameter is required"})
 		return
 	}
 
-	result, err := h.service.SearchUser(c.Request.Context(), username)
+	results, err := h.service.SearchUsers(c.Request.Context(), query)
 	if err != nil {
+		log.Printf("handler.Search: search error query=%q err=%v", query, err)
 		if errors.Is(err, friend.ErrInvalidUsername) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid username"})
+			c.JSON(http.StatusOK, gin.H{"users": []friend.UserSummary{}})
 			return
 		}
-		if errors.Is(err, friend.ErrUserNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to search user"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to search users"})
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	if results == nil {
+		results = []friend.UserSummary{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"users": results})
 }
 
 // SendRequest sends a friend request to another user
