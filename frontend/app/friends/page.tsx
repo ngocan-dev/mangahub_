@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import ProtectedRoute from "../components/ProtectedRoute";
+import { ENV } from "@/config/env";
 import { useAuth } from "@/context/AuthContext";
 import { chatService, type ChatMessage, type Conversation } from "@/service/chat.service";
 import { friendService, type FriendRequest, type UserSummary } from "@/service/friend.service";
 
 export default function FriendsPage() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<UserSummary[]>([]);
   const [friends, setFriends] = useState<UserSummary[]>([]);
@@ -23,6 +24,7 @@ export default function FriendsPage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatError, setChatError] = useState<string | null>(null);
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<number>>(new Set());
 
   /* ------------------------ */
   /* Loaders */
@@ -82,6 +84,11 @@ export default function FriendsPage() {
     conversations.forEach((c) => map.set(c.friend.id, c.friend));
     return Array.from(map.values()).filter((f) => f.id !== user?.id);
   }, [conversations, friends, user?.id]);
+
+  const onlineFriendsCount = useMemo(
+    () => acceptedFriends.filter((f) => onlineUserIds.has(f.id)).length,
+    [acceptedFriends, onlineUserIds],
+  );
 
   /* ------------------------ */
   /* Search */
@@ -227,6 +234,82 @@ export default function FriendsPage() {
     void loadConversations();
   }, [loadConversations, loadFriends, loadPendingRequests]);
 
+  useEffect(() => {
+    if (!token) return;
+
+    let socket: WebSocket | null = null;
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+    let stopped = false;
+
+    const buildPresenceWsUrl = (): string | null => {
+      try {
+        const apiBase = new URL(ENV.API_BASE_URL);
+        const protocol = apiBase.protocol === "https:" ? "wss:" : "ws:";
+        return `${protocol}//${apiBase.host}/ws/chat?token=${encodeURIComponent(token)}`;
+      } catch (err) {
+        console.error("Invalid API base URL for WebSocket", err);
+        if (typeof window !== "undefined") {
+          const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+          return `${protocol}//${window.location.host}/ws/chat?token=${encodeURIComponent(token)}`;
+        }
+        return null;
+      }
+    };
+
+    const handlePresenceUpdate = (raw: string) => {
+      try {
+        const payload = JSON.parse(raw) as { type?: string; online_user_ids?: Array<number | string> };
+        if (payload.type === "presence:update" && Array.isArray(payload.online_user_ids)) {
+          const normalizedIds = payload.online_user_ids
+            .map((id) => Number(id))
+            .filter((id) => Number.isFinite(id));
+          setOnlineUserIds(new Set(normalizedIds));
+        }
+      } catch (err) {
+        console.error("Failed to parse presence payload", err);
+      }
+    };
+
+    const connect = () => {
+      const wsUrl = buildPresenceWsUrl();
+      if (!wsUrl) return;
+
+      try {
+        socket = new WebSocket(wsUrl);
+      } catch (err) {
+        console.error("Failed to create presence WebSocket", err);
+        if (!stopped) {
+          reconnectTimeout = setTimeout(connect, 3000);
+        }
+        return;
+      }
+
+      socket.onmessage = (event) => {
+        if (typeof event.data === "string") {
+          handlePresenceUpdate(event.data);
+        }
+      };
+
+      socket.onclose = () => {
+        if (stopped) return;
+        setOnlineUserIds(new Set());
+        reconnectTimeout = setTimeout(connect, 3000);
+      };
+
+      socket.onerror = () => {
+        socket?.close();
+      };
+    };
+
+    connect();
+
+    return () => {
+      stopped = true;
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      socket?.close();
+    };
+  }, [token]);
+
   /* ------------------------ */
   /* Render helpers */
   /* ------------------------ */
@@ -320,7 +403,9 @@ export default function FriendsPage() {
             <div className="card space-y-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold">Friends</h2>
-                <span className="text-xs text-gray-400">{acceptedFriends.length} total</span>
+                <span className="text-xs text-gray-400">
+                  Online {onlineFriendsCount}/{acceptedFriends.length}
+                </span>
               </div>
               {acceptedFriends.length === 0 ? (
                 <p className="text-sm text-gray-400">No friends yet.</p>
@@ -334,7 +419,12 @@ export default function FriendsPage() {
                       }`}
                       onClick={() => void selectFriend(f)}
                     >
-                      <p className="font-semibold text-white">{f.username}</p>
+                      <div className="flex items-center gap-2">
+                        {onlineUserIds.has(f.id) && (
+                          <span className="h-2 w-2 rounded-full bg-green-500" aria-label="Online indicator" />
+                        )}
+                        <p className="font-semibold text-white">{f.username}</p>
+                      </div>
                       {renderLastMessage(f)}
                     </button>
                   ))}
