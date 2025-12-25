@@ -22,6 +22,7 @@ import (
 	chapterservice "github.com/ngocan-dev/mangahub/backend/internal/service/chapter"
 	"github.com/ngocan-dev/mangahub/backend/internal/tcp"
 	"github.com/ngocan-dev/mangahub/backend/internal/udp"
+	ws "github.com/ngocan-dev/mangahub/backend/internal/websocket"
 )
 
 // user handler tối giản
@@ -174,6 +175,8 @@ func main() {
 	friendRepo := friend.NewRepository(db)
 	friendService := friend.NewService(friendRepo, nil)
 	friendHandler := handlers.NewFriendHandler(friendService)
+	chatHub := ws.NewDirectChatHub(db)
+	chatHandler := handlers.NewChatHandler(chatHub)
 
 	// Initialize UDP server for chapter release notifications
 	udpAddress := cfg.UDP.ServerAddr
@@ -247,8 +250,15 @@ func main() {
 
 	// Routes: Friend management
 	r.GET("/users/search", authHandler.RequireAuth, friendHandler.Search)
+	r.GET("/friends", authHandler.RequireAuth, friendHandler.ListFriends)
+	r.GET("/friends/requests", authHandler.RequireAuth, friendHandler.PendingRequests)
+	r.POST("/friends/request", authHandler.RequireAuth, friendHandler.SendRequest)
+	r.POST("/friends/accept", authHandler.RequireAuth, friendHandler.AcceptRequest)
+	r.POST("/friends/reject", authHandler.RequireAuth, friendHandler.RejectRequest)
+	// Legacy paths
 	r.POST("/friends/requests", authHandler.RequireAuth, friendHandler.SendRequest)
 	r.POST("/friends/requests/accept", authHandler.RequireAuth, friendHandler.AcceptRequest)
+	r.GET("/ws/chat", authHandler.RequireAuth, chatHandler.Serve)
 
 	// Route: Get Popular Manga (cached)
 	r.GET("/manga/popular", mangaHandler.GetPopularManga)

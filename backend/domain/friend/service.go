@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ngocan-dev/mangahub/backend/internal/security"
 )
@@ -14,6 +15,7 @@ var (
 	ErrCannotFriendSelf = errors.New("cannot add yourself as friend")
 	ErrAlreadyFriends   = errors.New("already friends")
 	ErrRequestPending   = errors.New("friend request already pending")
+	ErrRequestRejected  = errors.New("friend request rejected")
 	ErrBlocked          = errors.New("friendship blocked")
 	ErrNoPendingRequest = errors.New("no pending friend request")
 	ErrInvalidUsername  = errors.New("invalid username")
@@ -50,13 +52,13 @@ func NewService(repo *Repository, notifier Notifier) *Service {
 }
 
 // SearchUsers looks up users by username or email, tolerating empty datasets.
-func (s *Service) SearchUsers(ctx context.Context, query string) ([]UserSummary, error) {
+func (s *Service) SearchUsers(ctx context.Context, userID int64, query string) ([]UserSummary, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return nil, ErrInvalidUsername
 	}
 
-	users, err := s.repo.FindUsersByQuery(ctx, query)
+	users, err := s.repo.FindUsersByQuery(ctx, userID, query)
 	if err != nil {
 		return nil, err
 	}
@@ -91,31 +93,33 @@ func (s *Service) SearchUser(ctx context.Context, username string) (*UserSummary
 	return user, nil
 }
 
-// SendFriendRequest sends a pending friend invitation to the target user
-func (s *Service) SendFriendRequest(ctx context.Context, requesterID int64, requesterUsername, targetUsername string) (*Friendship, error) {
-	targetUser, err := s.SearchUser(ctx, targetUsername)
+// SendFriendRequest sends a pending friend invitation to the target user id.
+func (s *Service) SendFriendRequest(ctx context.Context, requesterID int64, requesterUsername string, targetUserID int64) (*FriendRequest, error) {
+	targetUser, err := s.repo.FindUserByID(ctx, targetUserID)
 	if err != nil {
 		return nil, err
 	}
-
+	if targetUser == nil {
+		return nil, ErrUserNotFound
+	}
 	if targetUser.ID == requesterID {
 		return nil, ErrCannotFriendSelf
 	}
 
-	friendship, err := s.repo.GetFriendship(ctx, requesterID, targetUser.ID)
+	alreadyFriends, err := s.repo.AreFriends(ctx, requesterID, targetUser.ID)
 	if err != nil {
 		return nil, err
 	}
+	if alreadyFriends {
+		return nil, ErrAlreadyFriends
+	}
 
-	if friendship != nil {
-		switch friendship.Status {
-		case "accepted":
-			return nil, ErrAlreadyFriends
-		case "blocked":
-			return nil, ErrBlocked
-		case "pending":
-			return nil, ErrRequestPending
-		}
+	pending, err := s.repo.HasPendingRequest(ctx, requesterID, targetUser.ID)
+	if err != nil {
+		return nil, err
+	}
+	if pending {
+		return nil, ErrRequestPending
 	}
 
 	created, err := s.repo.CreateFriendRequest(ctx, requesterID, targetUser.ID)
@@ -128,31 +132,69 @@ func (s *Service) SendFriendRequest(ctx context.Context, requesterID int64, requ
 	return created, nil
 }
 
-// AcceptFriendRequest approves a pending request initiated by requesterUsername
-func (s *Service) AcceptFriendRequest(ctx context.Context, userID int64, accepterUsername, requesterUsername string) (*Friendship, error) {
-	requester, err := s.SearchUser(ctx, requesterUsername)
+// AcceptFriendRequest approves a pending request and creates friendship rows.
+func (s *Service) AcceptFriendRequest(ctx context.Context, userID int64, accepterUsername string, requestID int64) (*Friendship, error) {
+	req, err := s.repo.GetFriendRequestByID(ctx, requestID)
 	if err != nil {
 		return nil, err
 	}
-
-	friendship, err := s.repo.GetFriendship(ctx, requester.ID, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	if friendship == nil || friendship.Status != "pending" || friendship.UserID != requester.ID {
+	if req == nil || req.Status != "pending" || req.ToUserID != userID {
 		return nil, ErrNoPendingRequest
 	}
 
-	updated, err := s.repo.AcceptFriendRequest(ctx, requester.ID, userID)
+	if err := s.repo.UpdateFriendRequestStatus(ctx, req.ID, "accepted"); err != nil {
+		return nil, err
+	}
+	if err := s.repo.CreateFriendshipBidirectional(ctx, req.FromUserID, req.ToUserID); err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	friendship := &Friendship{
+		UserID:     req.FromUserID,
+		FriendID:   req.ToUserID,
+		Status:     "accepted",
+		CreatedAt:  req.CreatedAt,
+		AcceptedAt: &now,
+	}
+
+	_ = s.notifier.NotifyFriendAccepted(ctx, req.FromUserID, accepterUsername)
+
+	return friendship, nil
+}
+
+// RejectFriendRequest marks a pending request as rejected.
+func (s *Service) RejectFriendRequest(ctx context.Context, userID, requestID int64) error {
+	req, err := s.repo.GetFriendRequestByID(ctx, requestID)
+	if err != nil {
+		return err
+	}
+	if req == nil || req.ToUserID != userID || req.Status != "pending" {
+		return ErrNoPendingRequest
+	}
+	return s.repo.UpdateFriendRequestStatus(ctx, requestID, "rejected")
+}
+
+// ListFriends returns accepted friends for a user.
+func (s *Service) ListFriends(ctx context.Context, userID int64) ([]UserSummary, error) {
+	friends, err := s.repo.ListFriends(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	if updated == nil {
-		return nil, ErrNoPendingRequest
+	if friends == nil {
+		return []UserSummary{}, nil
 	}
+	return friends, nil
+}
 
-	_ = s.notifier.NotifyFriendAccepted(ctx, requester.ID, accepterUsername)
-
-	return updated, nil
+// ListPendingRequests returns pending requests directed to the user.
+func (s *Service) ListPendingRequests(ctx context.Context, userID int64) ([]FriendRequest, error) {
+	requests, err := s.repo.ListIncomingRequests(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if requests == nil {
+		return []FriendRequest{}, nil
+	}
+	return requests, nil
 }

@@ -29,16 +29,27 @@ type MangaGetter interface {
 	Exists(ctx context.Context, mangaID int64) (bool, error)
 }
 
+// ActivityRecorder logs user activity to downstream feeds.
+type ActivityRecorder interface {
+	RecordActivity(ctx context.Context, userID int64, activityType string, mangaID *int64, payload map[string]interface{}) error
+}
+
 // Service handles review use cases
 type Service struct {
 	repo          *Repository
 	mangaService  MangaGetter
 	ratingService RatingSetter
+	activityLog   ActivityRecorder
 }
 
 // NewService builds a review service
 func NewService(repo *Repository, mangaService MangaGetter, ratingService RatingSetter) *Service {
 	return &Service{repo: repo, mangaService: mangaService, ratingService: ratingService}
+}
+
+// SetActivityRecorder configures the optional activity recorder
+func (s *Service) SetActivityRecorder(recorder ActivityRecorder) {
+	s.activityLog = recorder
 }
 
 // CreateReview stores a new review after validations
@@ -98,6 +109,12 @@ func (s *Service) CreateReview(ctx context.Context, userID, mangaID int64, req C
 	review, err := s.repo.GetReviewByUserAndManga(ctx, userID, mangaID)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
+	}
+	if s.activityLog != nil {
+		_ = s.activityLog.RecordActivity(ctx, userID, "REVIEW", &mangaID, map[string]interface{}{
+			"rating":  req.Rating,
+			"content": sanitized,
+		})
 	}
 
 	return &CreateReviewResponse{

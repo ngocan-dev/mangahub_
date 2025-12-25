@@ -136,6 +136,11 @@ func (s *Service) UpdateProgress(ctx context.Context, userID, mangaID int64, req
 		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
 	}
 
+	_ = s.repo.RecordActivity(ctx, userID, "READ", &mangaID, map[string]interface{}{
+		"current_chapter": req.CurrentChapter,
+		"chapter_id":      chapterID,
+	})
+
 	return &UpdateProgressResponse{
 		Message:      "progress updated successfully",
 		UserProgress: progress,
@@ -200,6 +205,11 @@ func (s *Service) GetReadingStatistics(ctx context.Context, userID int64, force 
 	}
 
 	return stats, nil
+}
+
+// RecordActivity proxies to the repository to allow other services to reuse the activity feed.
+func (s *Service) RecordActivity(ctx context.Context, userID int64, activityType string, mangaID *int64, payload map[string]interface{}) error {
+	return s.repo.RecordActivity(ctx, userID, activityType, mangaID, payload)
 }
 
 // GetReadingAnalytics filters stats

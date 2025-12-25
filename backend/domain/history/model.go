@@ -35,6 +35,7 @@ type Activity struct {
 	ReviewID      *int64     `json:"review_id,omitempty"`
 	ReviewContent *string    `json:"review_content,omitempty"`
 	CompletedAt   *time.Time `json:"completed_at,omitempty"`
+	Payload       map[string]interface{} `json:"payload,omitempty"`
 	CreatedAt     time.Time  `json:"created_at"`
 }
 
