@@ -118,37 +118,37 @@ export interface UpdateProgressResponse {
 }
 
 export async function getPopularManga(limit = 10): Promise<Manga[]> {
-  const { data } = await http.get<Manga[]>("/manga/popular", { params: { limit } });
+  const { data } = await http.get<Manga[]>("/mangas/popular", { params: { limit } });
   return data;
 }
 
 export async function searchManga(keyword: string): Promise<SearchResponse> {
-  const { data } = await http.get<SearchResponse>("/manga/search", { params: { q: keyword } });
+  const { data } = await http.get<SearchResponse>("/mangas/search", { params: { q: keyword } });
   return data;
 }
 
 export async function getMangaById(id: number): Promise<MangaDetail> {
-  const { data } = await http.get<MangaDetail>(`/manga/${id}`);
+  const { data } = await http.get<MangaDetail>(`/mangas/${id}`);
   return data;
 }
 
 export async function addToLibrary(id: number, payload: AddToLibraryRequest): Promise<AddToLibraryResponse> {
-  const { data } = await http.post<AddToLibraryResponse>(`/manga/${id}/library`, payload);
+  const { data } = await http.post<AddToLibraryResponse>(`/mangas/${id}/library`, payload);
   return data;
 }
 
 export async function updateProgress(id: number, payload: UpdateProgressRequest): Promise<UpdateProgressResponse> {
-  const { data } = await http.put<UpdateProgressResponse>(`/manga/${id}/progress`, payload);
+  const { data } = await http.put<UpdateProgressResponse>(`/mangas/${id}/progress`, payload);
   return data;
 }
 
 export async function getReviewsByMangaId(id: number, page = 1, limit = 10): Promise<GetReviewsResponse> {
-  const { data } = await http.get<GetReviewsResponse>(`/manga/${id}/reviews`, { params: { page, limit } });
+  const { data } = await http.get<GetReviewsResponse>(`/mangas/${id}/reviews`, { params: { page, limit } });
   return data;
 }
 
 export async function createReview(id: number, payload: CreateReviewRequest): Promise<CreateReviewResponse> {
-  const { data } = await http.post<CreateReviewResponse>(`/manga/${id}/reviews`, payload);
+  const { data } = await http.post<CreateReviewResponse>(`/mangas/${id}/reviews`, payload);
   return data;
 }
 
