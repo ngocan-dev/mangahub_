@@ -249,6 +249,9 @@ func main() {
 	// Route: Get Manga Details
 	r.GET("/manga/:id", mangaHandler.GetDetails)
 
+	// Route: Get Library for authenticated user
+	r.GET("/library", authHandler.RequireAuth, mangaHandler.GetLibrary)
+
 	// Route: Get Chapter Details
 	r.GET("/chapters/:id", chapterHandler.GetChapter)
 

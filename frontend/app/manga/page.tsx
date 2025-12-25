@@ -3,14 +3,8 @@
 import { useEffect, useState } from "react";
 
 import MangaCard from "../components/MangaCard";
-import { getPopularManga, searchManga, type Manga } from "@/service/api";
-
-const normalizeMangaList = (data: unknown): Manga[] => {
-  if (Array.isArray(data)) return data;
-  if (Array.isArray((data as { items?: Manga[] })?.items)) return (data as { items?: Manga[] }).items ?? [];
-  if (Array.isArray((data as { data?: Manga[] })?.data)) return (data as { data?: Manga[] }).data ?? [];
-  return [];
-};
+import { mangaService } from "@/service/manga.service";
+import type { Manga } from "@/service/api";
 
 export default function MangaListPage() {
   const [manga, setManga] = useState<Manga[]>([]);
@@ -22,8 +16,8 @@ export default function MangaListPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await getPopularManga();
-      setManga(normalizeMangaList(data));
+      const data = await mangaService.getPopular();
+      setManga(data);
     } catch (err) {
       setError("Unable to load popular manga right now. Please check your connection to the server.");
       setManga([]);
@@ -38,8 +32,8 @@ export default function MangaListPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await searchManga(query);
-      setManga(normalizeMangaList(data));
+      const data = await mangaService.search(query);
+      setManga(data.results ?? []);
     } catch (err) {
       setError("Search failed. Please try again.");
       setManga([]);

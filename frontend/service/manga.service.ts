@@ -1,75 +1,77 @@
 import {
-  getChaptersByMangaId,
-  getMangaById as fetchMangaById,
+  addToLibrary,
+  createReview,
+  getLibrary,
+  getMangaById,
   getPopularManga,
   getReviewsByMangaId,
-  searchManga as searchMangaApi,
+  searchManga,
+  updateProgress,
+  type AddToLibraryRequest,
+  type AddToLibraryResponse,
+  type CreateReviewRequest,
+  type GetLibraryResponse,
+  type GetReviewsResponse,
+  type Manga,
+  type MangaDetail,
+  type SearchResponse,
+  type UpdateProgressRequest,
+  type UpdateProgressResponse,
 } from "@/service/api";
-import type { Chapter, Manga, Review } from "@/service/api";
-
-const isChapterArray = (data: unknown): data is Chapter[] => Array.isArray(data);
-
-const normalizeChapter = (chapter: unknown): Chapter | null => {
-  if (!chapter || typeof chapter !== "object") return null;
-  const raw = chapter as Record<string, unknown>;
-
-  const id = Number(raw.id);
-  const mangaId = Number(raw.manga_id);
-  const chapterNumber = Number(raw.chapter_number);
-  const title = typeof raw.title === "string" ? raw.title : "Untitled";
-  const contentUrl = typeof raw.content_url === "string" ? raw.content_url : "";
-
-  if (!Number.isFinite(id) || !Number.isFinite(mangaId)) return null;
-
-  return {
-    id,
-    manga_id: mangaId,
-    chapter_number: Number.isFinite(chapterNumber) ? chapterNumber : 0,
-    title,
-    content_url: contentUrl,
-  };
-};
-
-const normalizeChapters = (payload: unknown): Chapter[] => {
-  const candidates = (() => {
-    if (isChapterArray(payload)) return payload;
-    if (payload && typeof payload === "object" && "chapters" in payload) {
-      const rawChapters = (payload as { chapters?: unknown }).chapters;
-      if (isChapterArray(rawChapters)) return rawChapters;
-    }
-    return [] as unknown[];
-  })();
-
-  return candidates
-    .map((chapter) => normalizeChapter(chapter))
-    .filter((chapter): chapter is Chapter => Boolean(chapter));
-};
 
 async function getPopular(): Promise<Manga[]> {
   return getPopularManga();
 }
 
-async function searchManga(query: string): Promise<Manga[]> {
-  return searchMangaApi(query);
+async function search(query: string): Promise<SearchResponse> {
+  return searchManga(query);
 }
 
-async function getMangaById(id: number): Promise<Manga> {
-  return fetchMangaById(id);
+async function getById(id: number): Promise<MangaDetail> {
+  return getMangaById(id);
 }
 
-async function getChapters(id: number): Promise<Chapter[]> {
-  const raw = await getChaptersByMangaId(id);
-  return normalizeChapters(raw);
+async function addLibraryEntry(id: number, payload: AddToLibraryRequest): Promise<AddToLibraryResponse> {
+  return addToLibrary(id, payload);
 }
 
-async function getReviews(id: number): Promise<Review[]> {
-  return getReviewsByMangaId(id);
+async function setProgress(id: number, payload: UpdateProgressRequest): Promise<UpdateProgressResponse> {
+  return updateProgress(id, payload);
+}
+
+async function getReviews(id: number, page = 1, limit = 10): Promise<GetReviewsResponse> {
+  return getReviewsByMangaId(id, page, limit);
+}
+
+async function submitReview(id: number, payload: CreateReviewRequest) {
+  return createReview(id, payload);
+}
+
+async function getLibraryEntries(): Promise<GetLibraryResponse> {
+  return getLibrary();
 }
 
 export const mangaService = {
   getPopular,
-  searchManga,
-  getMangaById,
-  getChapters,
+  search,
+  getById,
+  addLibraryEntry,
+  setProgress,
   getReviews,
+  submitReview,
+  getLibraryEntries,
 };
+
+export type {
+  Manga,
+  MangaDetail,
+  SearchResponse,
+  AddToLibraryRequest,
+  AddToLibraryResponse,
+  UpdateProgressRequest,
+  UpdateProgressResponse,
+  GetReviewsResponse,
+  CreateReviewRequest,
+  GetLibraryResponse,
+  Review,
+} from "@/service/api";
