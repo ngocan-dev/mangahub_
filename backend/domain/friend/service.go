@@ -49,6 +49,23 @@ func NewService(repo *Repository, notifier Notifier) *Service {
 	return &Service{repo: repo, notifier: notifier}
 }
 
+// SearchUsers looks up users by username or email, tolerating empty datasets.
+func (s *Service) SearchUsers(ctx context.Context, query string) ([]UserSummary, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil, ErrInvalidUsername
+	}
+
+	users, err := s.repo.FindUsersByQuery(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	if users == nil {
+		return []UserSummary{}, nil
+	}
+	return users, nil
+}
+
 // SearchUser finds a user by username for friend lookup
 func (s *Service) SearchUser(ctx context.Context, username string) (*UserSummary, error) {
 	username = strings.TrimSpace(username)
