@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 )
 
 var (
+	emailRegex            = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 	ErrDuplicateUsername  = errors.New("duplicate username")
 	ErrDuplicateEmail     = errors.New("duplicate email")
 	ErrInvalidCredentials = errors.New("invalid credentials")
@@ -136,12 +138,18 @@ func Login(ctx context.Context, db *sql.DB, req LoginRequest) (*LoginResponse, e
 	var userID int64
 	var username, email, passwordHash string
 
-	// Step 1 & 2: Find user by email and get password hash
-	if err := ValidateEmail(req.Email); err != nil {
-		return nil, fmt.Errorf("invalid email: %w", err)
+	// Step 1 & 2: Find user by username or email and get password hash
+	// Check if input is email or username
+	isEmail := emailRegex.MatchString(req.UsernameOrEmail)
+
+	var query string
+	if isEmail {
+		query = `SELECT id, username, email, password_hash FROM users WHERE email = ?`
+	} else {
+		query = `SELECT id, username, email, password_hash FROM users WHERE username = ?`
 	}
 
-	err := db.QueryRowContext(ctx, `SELECT id, username, email, password_hash FROM users WHERE email = ?`, req.Email).Scan(
+	err := db.QueryRowContext(ctx, query, req.UsernameOrEmail).Scan(
 		&userID, &username, &email, &passwordHash,
 	)
 
