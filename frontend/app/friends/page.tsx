@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ENV } from "@/config/env";
 import { useAuth } from "@/context/AuthContext";
@@ -32,28 +32,31 @@ export default function FriendsPage() {
 
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const presenceSocketRef = useRef<WebSocket | null>(null);
+  const presenceReconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [onlineUserIds, setOnlineUserIds] = useState<number[]>([]);
 
   // ------------------------
   // Loaders
   // ------------------------
 
-  const loadFriends = async () => {
+  const loadFriends = useCallback(async () => {
     try {
       const data = await friendService.listFriends();
       setFriends(data);
     } catch (err) {
       console.error(err);
     }
-  };
+  }, []);
 
-  const loadPendingRequests = async () => {
+  const loadPendingRequests = useCallback(async () => {
     try {
       const data = await friendService.listPendingRequests();
       setPendingRequests(data);
     } catch (err) {
       console.error(err);
     }
-  };
+  }, []);
 
   // ------------------------
   // Search
@@ -127,8 +130,13 @@ export default function FriendsPage() {
   // ------------------------
   // Chat (WS – chỉ dùng khi chat)
   // ------------------------
+  const buildWSUrl = useCallback((path: string) => {
+    const wsBase = ENV.API_BASE_URL.replace(/^http/i, "ws");
+    const base = wsBase.endsWith("/") ? wsBase : `${wsBase}/`;
+    return new URL(path, base);
+  }, []);
 
-  const disconnectSocket = () => {
+  const disconnectSocket = useCallback(() => {
     if (reconnectRef.current) clearTimeout(reconnectRef.current);
     reconnectRef.current = null;
 
@@ -136,7 +144,7 @@ export default function FriendsPage() {
       socketRef.current.close();
       socketRef.current = null;
     }
-  };
+  }, []);
 
   const connectChat = (friend: UserSummary) => {
     disconnectSocket();
@@ -149,8 +157,7 @@ export default function FriendsPage() {
       return;
     }
 
-    const wsBase = ENV.API_BASE_URL.replace(/^http/i, "ws");
-    const wsUrl = new URL("/ws/chat", wsBase.endsWith("/") ? wsBase : `${wsBase}/`);
+    const wsUrl = buildWSUrl("/ws/chat");
     wsUrl.searchParams.set("friend_id", String(friend.id));
     wsUrl.searchParams.set("token", token);
 
@@ -195,12 +202,70 @@ export default function FriendsPage() {
   // ------------------------
   // Init
   // ------------------------
+  const disconnectPresence = useCallback(() => {
+    if (presenceReconnectRef.current) clearTimeout(presenceReconnectRef.current);
+    presenceReconnectRef.current = null;
+
+    if (presenceSocketRef.current) {
+      presenceSocketRef.current.close();
+      presenceSocketRef.current = null;
+    }
+  }, []);
+
+  const connectPresence = useCallback(() => {
+    disconnectPresence();
+
+    if (!token) {
+      setOnlineUserIds([]);
+      return;
+    }
+
+    const wsUrl = buildWSUrl("/ws/chat");
+    wsUrl.searchParams.set("token", token);
+
+    const ws = new WebSocket(wsUrl.toString());
+    presenceSocketRef.current = ws;
+
+    ws.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data) as { type?: string; online_user_ids?: number[] };
+        if (payload.type === "presence:update" && Array.isArray(payload.online_user_ids)) {
+          setOnlineUserIds(payload.online_user_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)));
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    ws.onclose = (event) => {
+      if (event.code === 1000 || !token) return;
+      presenceReconnectRef.current = setTimeout(() => connectPresence(), 1500);
+    };
+
+    ws.onerror = () => {
+      setOnlineUserIds([]);
+    };
+  }, [buildWSUrl, disconnectPresence, token]);
+
+  const onlineFriendIds = useMemo(() => new Set(onlineUserIds), [onlineUserIds]);
+  const onlineFriends = useMemo(
+    () => friends.filter((f) => onlineFriendIds.has(f.id)),
+    [friends, onlineFriendIds],
+  );
 
   useEffect(() => {
     void loadFriends();
     void loadPendingRequests();
-    return () => disconnectSocket();
-  }, []);
+    return () => {
+      disconnectSocket();
+      disconnectPresence();
+    };
+  }, [disconnectPresence, disconnectSocket, loadFriends, loadPendingRequests]);
+
+  useEffect(() => {
+    connectPresence();
+    return () => disconnectPresence();
+  }, [connectPresence, disconnectPresence]);
 
   // ------------------------
   // Render
@@ -260,12 +325,42 @@ export default function FriendsPage() {
 
         {/* Friends */}
         <div className="card space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Friends</h2>
+            <span className="text-sm text-gray-300">
+              Online {onlineFriends.length}/{friends.length}
+            </span>
+          </div>
           {friends.map((f) => (
             <div key={f.id} className="flex justify-between">
-              <span>{f.username}</span>
+              <div className="flex items-center gap-2">
+                <span
+                  aria-label={onlineFriendIds.has(f.id) ? "Online" : "Offline"}
+                  className={`h-2 w-2 rounded-full ${onlineFriendIds.has(f.id) ? "bg-green-400" : "bg-gray-500"}`}
+                />
+                <span>{f.username}</span>
+              </div>
               <button onClick={() => connectChat(f)}>Chat</button>
             </div>
           ))}
+        </div>
+
+        {/* Online friends */}
+        <div className="card space-y-2">
+          <h2 className="text-lg font-semibold">Online friends (WebSocket)</h2>
+          {onlineFriends.length === 0 ? (
+            <p className="text-sm text-gray-300">No friends online right now.</p>
+          ) : (
+            onlineFriends.map((f) => (
+              <div key={f.id} className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-green-400" aria-hidden="true" />
+                  <span>{f.username}</span>
+                </div>
+                <button onClick={() => connectChat(f)}>Chat</button>
+              </div>
+            ))
+          )}
         </div>
 
         {/* Chat */}
