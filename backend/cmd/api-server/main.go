@@ -242,6 +242,7 @@ func main() {
 
 	// Route: Get Popular Manga (cached)
 	r.GET("/manga/popular", mangaHandler.GetPopularManga)
+	r.GET("/mangas/popular", mangaHandler.GetPopularManga)
 
 	// Route: Search Manga
 	r.GET("/manga/search", mangaHandler.Search)
