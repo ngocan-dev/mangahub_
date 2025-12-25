@@ -339,15 +339,8 @@ func (h *MangaHandler) GetFriendsActivityFeed(c *gin.Context) {
 	log.Printf("handler.GetFriendsActivityFeed: user_id=%d page=%d limit=%d", userID, page, limit)
 	resp, err := h.historyService.GetFriendsActivityFeed(c.Request.Context(), userID, page, limit)
 	if err != nil {
-		status := http.StatusInternalServerError
-		switch {
-		case errors.Is(err, history.ErrNoData):
-			status = http.StatusNotFound
-		case errors.Is(err, history.ErrDatabaseError):
-			status = http.StatusInternalServerError
-		}
 		log.Printf("handler.GetFriendsActivityFeed: user_id=%d error=%v", userID, err)
-		c.JSON(status, gin.H{"error": "unable to load friends activity"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to load friends activity"})
 		return
 	}
 
@@ -367,7 +360,12 @@ func (h *MangaHandler) GetReadingStatistics(c *gin.Context) {
 	summary, err := h.historyService.GetReadingSummary(c.Request.Context(), userID)
 	if err != nil {
 		log.Printf("handler.GetReadingStatistics: user_id=%d error=%v", userID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to load reading statistics"})
+		status := http.StatusInternalServerError
+		if errors.Is(err, history.ErrDatabaseError) {
+			c.JSON(status, gin.H{"error": "unable to load reading statistics"})
+			return
+		}
+		c.JSON(http.StatusOK, &history.ReadingSummary{})
 		return
 	}
 
@@ -393,7 +391,15 @@ func (h *MangaHandler) GetReadingAnalytics(c *gin.Context) {
 	analytics, err := h.historyService.GetReadingAnalyticsBuckets(c.Request.Context(), userID)
 	if err != nil {
 		log.Printf("handler.GetReadingAnalytics: user_id=%d error=%v", userID, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to load reading analytics"})
+		if errors.Is(err, history.ErrDatabaseError) {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "unable to load reading analytics"})
+			return
+		}
+		c.JSON(http.StatusOK, &history.ReadingAnalyticsResponse{
+			Daily:   []history.ReadingAnalyticsPoint{},
+			Weekly:  []history.ReadingAnalyticsPoint{},
+			Monthly: []history.ReadingAnalyticsPoint{},
+		})
 		return
 	}
 
