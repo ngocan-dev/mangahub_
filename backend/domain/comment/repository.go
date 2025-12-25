@@ -64,8 +64,8 @@ func (r *Repository) CheckMangaInCompletedLibrary(ctx context.Context, userID, m
 	var count int
 	err := r.db.QueryRowContext(ctx, `
         SELECT COUNT(*)
-        FROM User_Library
-        WHERE User_Id = ? AND Novel_Id = ? AND Status = 'completed'
+        FROM user_library
+        WHERE user_id = ? AND manga_id = ? AND status = 'completed'
     `, userID, mangaID).Scan(&count)
 	if err != nil {
 		return false, err

@@ -3,9 +3,16 @@ package library
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	domainlibrary "github.com/ngocan-dev/mangahub/backend/domain/library"
+)
+
+var (
+	// ErrDuplicateEntry indicates a unique constraint violation when inserting a library entry
+	ErrDuplicateEntry = errors.New("library entry already exists")
 )
 
 // Repository handles persistence for library operations
@@ -20,7 +27,7 @@ func NewRepository(db *sql.DB) *Repository {
 
 // CheckLibraryExists ensures manga already in user's library
 func (r *Repository) CheckLibraryExists(ctx context.Context, userID, mangaID int64) (bool, error) {
-	query := `SELECT COUNT(*) FROM User_Library WHERE User_Id = ? AND Novel_Id = ?`
+	query := `SELECT COUNT(*) FROM user_library WHERE user_id = ? AND manga_id = ?`
 	var count int
 	if err := r.db.QueryRowContext(ctx, query, userID, mangaID).Scan(&count); err != nil {
 		return false, err
@@ -30,66 +37,53 @@ func (r *Repository) CheckLibraryExists(ctx context.Context, userID, mangaID int
 
 // AddToLibrary inserts both library entry and initial progress transactionally
 func (r *Repository) AddToLibrary(ctx context.Context, userID, mangaID int64, status string, currentChapter int) error {
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
 	now := time.Now()
-	var startedAt *time.Time
-	if status == "reading" || status == "completed" {
-		startedAt = &now
-	}
-	var completedAt *time.Time
-	if status == "completed" {
-		completedAt = &now
-	}
-
-	if _, err := tx.ExecContext(ctx, `
-INSERT INTO User_Library (User_Id, Novel_Id, Status, Is_Favorite, Started_At, Completed_At, Last_Updated_At)
-VALUES (?, ?, ?, 0, ?, ?, ?)
-`, userID, mangaID, status, startedAt, completedAt, now); err != nil {
+	if _, err := r.db.ExecContext(ctx, `
+INSERT INTO user_library (user_id, manga_id, status, current_chapter, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?)
+`, userID, mangaID, status, currentChapter, now, now); err != nil {
+		var mysqlErr *mysql.MySQLError
+		if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
+			return ErrDuplicateEntry
+		}
 		return err
-	}
-
-	if currentChapter < 1 {
-		currentChapter = 1
 	}
 
 	var chapterID *int64
-	var chapterIDVal sql.NullInt64
-	if err := tx.QueryRowContext(ctx, `
-        SELECT Chapter_Id FROM Chapters
-        WHERE Novel_Id = ? AND Chapter_Number = ?
-        LIMIT 1
-    `, mangaID, currentChapter).Scan(&chapterIDVal); err == nil && chapterIDVal.Valid {
-		chapterID = &chapterIDVal.Int64
+	if currentChapter > 0 {
+		var chapterIDVal sql.NullInt64
+		if err := r.db.QueryRowContext(ctx, `
+SELECT id FROM chapters WHERE manga_id = ? AND number = ? LIMIT 1
+`, mangaID, currentChapter).Scan(&chapterIDVal); err == nil && chapterIDVal.Valid {
+			chapterID = &chapterIDVal.Int64
+		}
 	}
 
-	if _, err := tx.ExecContext(ctx, `
-        INSERT INTO Reading_Progress (User_Id, Novel_Id, Current_Chapter, Current_Chapter_Id, Last_Read_At)
-        VALUES (?, ?, ?, ?, ?)
-    `, userID, mangaID, currentChapter, chapterID, now); err != nil {
+	if _, err := r.db.ExecContext(ctx, `
+INSERT INTO reading_progress (user_id, manga_id, current_chapter_id, last_read_at, progress_percent, current_page)
+VALUES (?, ?, ?, ?, 0, 0)
+ON DUPLICATE KEY UPDATE current_chapter_id = VALUES(current_chapter_id), last_read_at = VALUES(last_read_at)
+`, userID, mangaID, chapterID, now); err != nil {
 		return err
 	}
 
-	return tx.Commit()
+	return nil
 }
 
 // GetLibraryStatus fetches user's library status for manga
 func (r *Repository) GetLibraryStatus(ctx context.Context, userID, mangaID int64) (*domainlibrary.LibraryStatus, error) {
 	query := `
-SELECT Status, Started_At, Completed_At
-FROM User_Library
-WHERE User_Id = ? AND Novel_Id = ?
+SELECT status, current_chapter, created_at, updated_at
+FROM user_library
+WHERE user_id = ? AND manga_id = ?
 `
 	var status domainlibrary.LibraryStatus
-	var startedAt, completedAt sql.NullTime
+	var createdAt, updatedAt sql.NullTime
 	err := r.db.QueryRowContext(ctx, query, userID, mangaID).Scan(
 		&status.Status,
-		&startedAt,
-		&completedAt,
+		&status.CurrentChapter,
+		&createdAt,
+		&updatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -98,11 +92,11 @@ WHERE User_Id = ? AND Novel_Id = ?
 		return nil, err
 	}
 
-	if startedAt.Valid {
-		status.StartedAt = &startedAt.Time
+	if createdAt.Valid {
+		status.StartedAt = &createdAt.Time
 	}
-	if completedAt.Valid {
-		status.CompletedAt = &completedAt.Time
+	if updatedAt.Valid {
+		status.CompletedAt = &updatedAt.Time
 	}
 
 	return &status, nil
@@ -116,11 +110,11 @@ func (r *Repository) RemoveFromLibrary(ctx context.Context, userID, mangaID int6
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.ExecContext(ctx, `DELETE FROM Reading_Progress WHERE User_Id = ? AND Novel_Id = ?`, userID, mangaID); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM reading_progress WHERE user_id = ? AND manga_id = ?`, userID, mangaID); err != nil {
 		return err
 	}
 
-	result, err := tx.ExecContext(ctx, `DELETE FROM User_Library WHERE User_Id = ? AND Novel_Id = ?`, userID, mangaID)
+	result, err := tx.ExecContext(ctx, `DELETE FROM user_library WHERE user_id = ? AND manga_id = ?`, userID, mangaID)
 	if err != nil {
 		return err
 	}
@@ -134,20 +128,11 @@ func (r *Repository) RemoveFromLibrary(ctx context.Context, userID, mangaID int6
 
 // UpdateLibraryStatus updates status timestamps and returns new status
 func (r *Repository) UpdateLibraryStatus(ctx context.Context, userID, mangaID int64, status string) (*domainlibrary.LibraryStatus, error) {
-	now := time.Now()
-	var startedAt, completedAt *time.Time
-	if status == "reading" || status == "completed" {
-		startedAt = &now
-	}
-	if status == "completed" {
-		completedAt = &now
-	}
-
 	result, err := r.db.ExecContext(ctx, `
-UPDATE User_Library
-SET Status = ?, Started_At = COALESCE(Started_At, ?), Completed_At = CASE WHEN ? IS NOT NULL THEN ? ELSE Completed_At END, Last_Updated_At = ?
-WHERE User_Id = ? AND Novel_Id = ?
-`, status, startedAt, completedAt, completedAt, now, userID, mangaID)
+UPDATE user_library
+SET status = ?, updated_at = CURRENT_TIMESTAMP
+WHERE user_id = ? AND manga_id = ?
+`, status, userID, mangaID)
 	if err != nil {
 		return nil, err
 	}
@@ -162,11 +147,11 @@ WHERE User_Id = ? AND Novel_Id = ?
 // GetLibrary fetches the user's library listing
 func (r *Repository) GetLibrary(ctx context.Context, userID int64) ([]domainlibrary.LibraryEntry, error) {
 	query := `
-SELECT ul.Novel_Id, n.Title, n.Image, ul.Status, ul.Started_At, ul.Completed_At, ul.Last_Updated_At
-FROM User_Library ul
-JOIN Novels n ON n.Novel_Id = ul.Novel_Id
-WHERE ul.User_Id = ?
-ORDER BY ul.Last_Updated_At DESC
+SELECT ul.manga_id, m.title, m.cover_url, ul.status, ul.current_chapter, ul.created_at, ul.updated_at
+FROM user_library ul
+JOIN mangas m ON m.id = ul.manga_id
+WHERE ul.user_id = ?
+ORDER BY ul.updated_at DESC
 `
 	rows, err := r.db.QueryContext(ctx, query, userID)
 	if err != nil {
@@ -177,15 +162,16 @@ ORDER BY ul.Last_Updated_At DESC
 	var entries []domainlibrary.LibraryEntry
 	for rows.Next() {
 		var entry domainlibrary.LibraryEntry
-		var startedAt, completedAt sql.NullTime
-		if err := rows.Scan(&entry.MangaID, &entry.Title, &entry.CoverImage, &entry.Status, &startedAt, &completedAt, &entry.LastUpdated); err != nil {
+		var createdAt, updatedAt sql.NullTime
+		if err := rows.Scan(&entry.MangaID, &entry.Title, &entry.CoverImage, &entry.Status, &entry.CurrentChapter, &createdAt, &updatedAt); err != nil {
 			return nil, err
 		}
-		if startedAt.Valid {
-			entry.StartedAt = &startedAt.Time
+		if createdAt.Valid {
+			entry.StartedAt = &createdAt.Time
 		}
-		if completedAt.Valid {
-			entry.CompletedAt = &completedAt.Time
+		if updatedAt.Valid {
+			entry.CompletedAt = &updatedAt.Time
+			entry.LastUpdated = updatedAt.Time
 		}
 		entries = append(entries, entry)
 	}
