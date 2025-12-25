@@ -26,6 +26,7 @@ export interface ChapterSummary {
 
 export interface LibraryStatus {
   status: string;
+  current_chapter?: number;
   started_at?: string;
   completed_at?: string;
 }
@@ -111,9 +112,9 @@ export interface AddToLibraryRequest {
 }
 
 export interface AddToLibraryResponse {
-  message: string;
-  library_status?: LibraryStatus;
-  user_progress?: UserProgress;
+  status: string;
+  current_chapter: number;
+  already_in_library: boolean;
 }
 
 export interface UpdateProgressRequest {

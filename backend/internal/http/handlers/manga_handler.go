@@ -240,8 +240,6 @@ func (h *MangaHandler) AddToLibrary(c *gin.Context) {
 			status = http.StatusBadRequest
 		case errors.Is(err, libraryservice.ErrMangaNotFound):
 			status = http.StatusNotFound
-		case errors.Is(err, libraryservice.ErrMangaAlreadyInLibrary):
-			status = http.StatusConflict
 		case errors.Is(err, libraryservice.ErrDatabaseError):
 			status = http.StatusInternalServerError
 		}
@@ -249,7 +247,7 @@ func (h *MangaHandler) AddToLibrary(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, resp)
+	c.JSON(http.StatusOK, resp)
 }
 
 // UpdateProgress updates reading progress for a manga.

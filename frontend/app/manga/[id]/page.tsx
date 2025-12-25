@@ -21,6 +21,7 @@ export default function MangaDetailPage({ params }: PageProps) {
   const [reviews, setReviews] = useState<GetReviewsResponse | null>(null);
   const [progress, setProgress] = useState<number>(0);
   const [status, setStatus] = useState<string | null>(null);
+  const [inLibrary, setInLibrary] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [reviewComment, setReviewComment] = useState<string>("");
@@ -47,7 +48,8 @@ export default function MangaDetailPage({ params }: PageProps) {
           mangaService.getReviews(mangaId),
         ]);
         setManga(mangaDetail);
-        setProgress(mangaDetail.user_progress?.current_chapter ?? 0);
+        setProgress(mangaDetail.user_progress?.current_chapter ?? mangaDetail.library_status?.current_chapter ?? 0);
+        setInLibrary(Boolean(mangaDetail.library_status));
         setReviews(reviewList);
       } catch (err) {
         setError("Unable to load this manga right now. Please ensure the server is online.");
@@ -65,7 +67,9 @@ export default function MangaDetailPage({ params }: PageProps) {
     setError(null);
     try {
       const response = await mangaService.addLibraryEntry(mangaId, { status: "reading", current_chapter: progress });
-      setStatus(response.message || "Added to your library!");
+      setInLibrary(true);
+      setStatus(response.already_in_library ? "Already in your library." : "Added to your library!");
+      setProgress(response.current_chapter ?? progress);
     } catch (err) {
       setError("Could not add to library. Please try again.");
       console.error(err);
@@ -165,8 +169,8 @@ export default function MangaDetailPage({ params }: PageProps) {
         <div className="card space-y-3">
           <h2 className="text-lg font-semibold text-white">Library</h2>
           <p className="text-sm text-slate-300">Add this manga to your personal library.</p>
-          <button className="btn-secondary w-full" onClick={handleAddToLibrary} disabled={!isAuthenticated}>
-            Add to library
+          <button className="btn-secondary w-full" onClick={handleAddToLibrary} disabled={!isAuthenticated || inLibrary}>
+            {inLibrary ? "In library" : "Add to library"}
           </button>
           {!isAuthenticated ? <p className="text-xs text-amber-300">Sign in to save manga to your library.</p> : null}
           {status ? <p className="text-sm text-emerald-300">{status}</p> : null}

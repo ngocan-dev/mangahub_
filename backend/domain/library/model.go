@@ -30,8 +30,9 @@ type AddToLibraryRequest struct {
 
 // AddToLibraryResponse returns result of library addition
 type AddToLibraryResponse struct {
-	Status         string `json:"status"`
-	CurrentChapter int    `json:"current_chapter"`
+	Status           string `json:"status"`
+	CurrentChapter   int    `json:"current_chapter"`
+	AlreadyInLibrary bool   `json:"already_in_library"`
 }
 
 // UpdateLibraryStatusRequest holds payload for updating status

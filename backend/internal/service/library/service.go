@@ -13,11 +13,10 @@ import (
 )
 
 var (
-	ErrMangaNotFound         = errors.New("manga not found")
-	ErrMangaAlreadyInLibrary = errors.New("manga already in library")
-	ErrInvalidStatus         = errors.New("invalid status")
-	ErrDatabaseError         = errors.New("database error")
-	ErrMangaNotInLibrary     = errors.New("manga not in library")
+	ErrMangaNotFound     = errors.New("manga not found")
+	ErrInvalidStatus     = errors.New("invalid status")
+	ErrDatabaseError     = errors.New("database error")
+	ErrMangaNotInLibrary = errors.New("manga not in library")
 )
 
 var validStatuses = map[string]bool{
@@ -65,29 +64,45 @@ func (s *Service) AddToLibrary(ctx context.Context, userID, mangaID int64, req d
 		return nil, ErrMangaNotFound
 	}
 
-	exists, err := s.repo.CheckLibraryExists(ctx, userID, mangaID)
+	existingStatus, err := s.repo.GetLibraryStatus(ctx, userID, mangaID)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
 	}
-	if exists {
-		return nil, ErrMangaAlreadyInLibrary
-	}
+	alreadyInLibrary := existingStatus != nil
 
 	currentChapter := req.CurrentChapter
 	if currentChapter < 0 {
 		currentChapter = 0
 	}
 
-	if err := s.repo.AddToLibrary(ctx, userID, mangaID, status, currentChapter); err != nil {
-		if errors.Is(err, libraryrepository.ErrDuplicateEntry) {
-			return nil, ErrMangaAlreadyInLibrary
+	if !alreadyInLibrary {
+		var duplicate bool
+		duplicate, err = s.repo.AddToLibrary(ctx, userID, mangaID, status, currentChapter)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
 		}
-		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
+		if duplicate {
+			alreadyInLibrary = true
+		}
+	}
+
+	finalStatus := existingStatus
+	if finalStatus == nil {
+		finalStatus, err = s.repo.GetLibraryStatus(ctx, userID, mangaID)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
+		}
+	}
+
+	if finalStatus != nil {
+		status = finalStatus.Status
+		currentChapter = finalStatus.CurrentChapter
 	}
 
 	return &domainlibrary.AddToLibraryResponse{
-		Status:         status,
-		CurrentChapter: currentChapter,
+		Status:           status,
+		CurrentChapter:   currentChapter,
+		AlreadyInLibrary: alreadyInLibrary,
 	}, nil
 }
 
