@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import type { Manga } from "@/services/manga.service";
+import type { Manga } from "@/service/manga.service";
 
 interface MangaCardProps {
   manga: Manga;

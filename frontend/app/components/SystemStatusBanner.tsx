@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { systemService, type ServerStatus, type SyncStatus } from "@/services/system.service";
+import { systemService, type ServerStatus, type SyncStatus } from "@/service/system.service";
 
 type StatusType = "healthy" | "degraded" | "offline" | "unknown";
 

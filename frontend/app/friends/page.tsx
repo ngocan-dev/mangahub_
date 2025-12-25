@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import ProtectedRoute from "@/components/ProtectedRoute";
-import { friendService, type FriendActivity, type UserSummary } from "@/services/friend.service";
+import { friendService, type FriendActivity, type UserSummary } from "@/service/friend.service";
 
 export default function FriendsPage() {
   const [query, setQuery] = useState<string>("");
