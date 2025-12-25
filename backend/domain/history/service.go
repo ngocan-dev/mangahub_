@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	pkgchapter "github.com/ngocan-dev/mangahub/backend/pkg/models"
@@ -21,6 +22,7 @@ var (
 // ChapterService exposes chapter operations needed by history
 type ChapterService interface {
 	ValidateChapter(ctx context.Context, mangaID int64, chapter int) (*pkgchapter.ChapterSummary, error)
+	GetChapterCount(ctx context.Context, mangaID int64) (int, error)
 }
 
 // LibraryChecker verifies library membership
@@ -114,13 +116,39 @@ func (s *Service) UpdateProgress(ctx context.Context, userID, mangaID int64, req
 		return nil, ErrInvalidChapterNumber
 	}
 
+	existingProgress, err := s.repo.GetUserProgress(ctx, userID, mangaID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
+	}
+
+	totalChapters, err := s.chapterService.GetChapterCount(ctx, mangaID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
+	}
+	if totalChapters < 1 {
+		return nil, ErrInvalidChapterNumber
+	}
+
+	if existingProgress != nil && req.CurrentChapter <= existingProgress.CurrentChapter {
+		if existingProgress.ProgressPercent == 0 {
+			existingProgress.ProgressPercent = math.Min(100, (float64(existingProgress.CurrentChapter)/float64(totalChapters))*100)
+		}
+		return &UpdateProgressResponse{
+			Message:      "progress unchanged",
+			UserProgress: existingProgress,
+			Broadcasted:  false,
+		}, nil
+	}
+
+	progressPercent := math.Min(100, (float64(req.CurrentChapter)/float64(totalChapters))*100)
+
 	var chapterID *int64
 	if summary.ID != 0 {
 		id := summary.ID
 		chapterID = &id
 	}
 
-	if err := s.repo.UpdateProgress(ctx, userID, mangaID, req.CurrentChapter, chapterID); err != nil {
+	if err := s.repo.UpdateProgress(ctx, userID, mangaID, req.CurrentChapter, chapterID, progressPercent); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
 	}
 
