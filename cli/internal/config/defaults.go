@@ -4,17 +4,20 @@ import "fmt"
 
 // Default configuration constants.
 const (
-	DefaultBaseURL     = "http://localhost:8080"
-	DefaultServerHost  = "localhost"
-	DefaultServerPort  = 8080
-	DefaultGRPCPort    = 9092
-	DefaultSyncTCPPort = 9090
-	DefaultNotifyUDP   = 9091
-	DefaultChatWSPort  = 9093
+	DefaultBaseURL      = "http://localhost:8080"
+	DefaultServerHost   = "localhost"
+	DefaultServerPort   = 8080
+	DefaultGRPCPort     = 50051
+	DefaultSyncTCPPort  = 9000
+	DefaultNotifyUDP    = 9091
+	DefaultChatWSPort   = 9093
+	DefaultHTTPProtocol = "http"
 )
 
-// DefaultGRPCAddress builds the default gRPC address from host and port.
-var DefaultGRPCAddress = fmt.Sprintf("%s:%d", DefaultServerHost, DefaultGRPCPort)
+var (
+	DefaultTCPAddress  = fmt.Sprintf("%s:%d", DefaultServerHost, DefaultSyncTCPPort)
+	DefaultGRPCAddress = fmt.Sprintf("%s:%d", DefaultServerHost, DefaultGRPCPort)
+)
 
 // DefaultUDPPort provides the fallback UDP port for notifications.
 const DefaultUDPPort = DefaultNotifyUDP
@@ -76,6 +79,7 @@ type Config struct {
 
 	BaseURL     string `json:"base_url"`
 	GRPCAddress string `json:"grpc_address"`
+	TCPAddress  string `json:"tcp_address"`
 	UDPPort     int    `json:"udp_port"`
 }
 
@@ -133,10 +137,13 @@ func applyDerived(cfg *Config) {
 		cfg.Auth.Profile = "default"
 	}
 	if cfg.BaseURL == "" {
-		cfg.BaseURL = fmt.Sprintf("http://%s:%d", cfg.Server.Host, cfg.Server.Port)
+		cfg.BaseURL = fmt.Sprintf("%s://%s:%d", DefaultHTTPProtocol, cfg.Server.Host, cfg.Server.Port)
 	}
 	if cfg.GRPCAddress == "" {
 		cfg.GRPCAddress = fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.GRPC)
+	}
+	if cfg.TCPAddress == "" {
+		cfg.TCPAddress = fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Sync.TCPPort)
 	}
 	if cfg.UDPPort == 0 {
 		cfg.UDPPort = cfg.Notify.UDPPort

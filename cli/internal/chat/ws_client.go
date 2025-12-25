@@ -14,11 +14,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ngocan-dev/mangahub_/cli/internal/config"
 )
 
 // WSClient manages a WebSocket connection to the chat server.
 type WSClient struct {
-	Room string
+	Room     string
+	hostPort string
 
 	conn   *simpleWS
 	mu     sync.Mutex
@@ -27,10 +30,15 @@ type WSClient struct {
 
 type websocketDialer struct{}
 
+const (
+	defaultChatHost = config.DefaultServerHost
+	defaultChatPort = config.DefaultChatWSPort
+)
+
 // NewWSClient builds a WebSocket client for the desired room. An empty room
 // value joins the general chat.
-func NewWSClient(room string) *WSClient {
-	return &WSClient{Room: room, dialer: &websocketDialer{}}
+func NewWSClient(room, hostPort string) *WSClient {
+	return &WSClient{Room: room, hostPort: hostPort, dialer: &websocketDialer{}}
 }
 
 // Connect opens the WebSocket connection.
@@ -40,7 +48,12 @@ func (c *WSClient) Connect(ctx context.Context) error {
 		values.Set("room", c.Room)
 	}
 
-	endpoint := url.URL{Scheme: "ws", Host: "localhost:9093", Path: "/chat"}
+	host := c.hostPort
+	if strings.TrimSpace(host) == "" {
+		host = fmt.Sprintf("%s:%d", defaultChatHost, defaultChatPort)
+	}
+
+	endpoint := url.URL{Scheme: "ws", Host: host, Path: "/chat"}
 	if encoded := values.Encode(); encoded != "" {
 		endpoint.RawQuery = encoded
 	}

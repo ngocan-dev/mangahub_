@@ -43,6 +43,7 @@ var infoCmd = &cobra.Command{
 			"data_path":         configDir,
 			"base_url":          cfg.Data.BaseURL,
 			"grpc_address":      cfg.Data.GRPCAddress,
+			"tcp_address":       cfg.Data.TCPAddress,
 			"runtime": map[string]string{
 				"os":         runtime.GOOS,
 				"arch":       runtime.GOARCH,
@@ -50,7 +51,7 @@ var infoCmd = &cobra.Command{
 			},
 			"server_components": map[string]any{
 				"http_api":       fmt.Sprintf("%s:%d", cfg.Data.Server.Host, cfg.Data.Server.Port),
-				"tcp_sync":       fmt.Sprintf("%s:%d", cfg.Data.Server.Host, cfg.Data.Sync.TCPPort),
+				"tcp_sync":       cfg.Data.TCPAddress,
 				"udp_notify":     fmt.Sprintf("%s:%d", cfg.Data.Server.Host, cfg.Data.Notify.UDPPort),
 				"grpc_service":   cfg.Data.GRPCAddress,
 				"websocket_chat": fmt.Sprintf("%s:%d", cfg.Data.Server.Host, cfg.Data.Chat.WSPort),
@@ -81,13 +82,14 @@ var infoCmd = &cobra.Command{
 		cmd.Printf("Data Path:         %s\n", configDir)
 		cmd.Printf("Backend API URL:   %s\n", cfg.Data.BaseURL)
 		cmd.Printf("gRPC Address:      %s\n", cfg.Data.GRPCAddress)
+		cmd.Printf("TCP Address:       %s\n", cfg.Data.TCPAddress)
 		cmd.Println()
 		cmd.Printf("OS:                %s/%s\n", runtime.GOOS, runtime.GOARCH)
 		cmd.Printf("Go Runtime:        %s\n", runtime.Version())
 		cmd.Println()
 		cmd.Println("Server Components:")
 		cmd.Printf("  HTTP API:        configured (%s:%d)\n", cfg.Data.Server.Host, cfg.Data.Server.Port)
-		cmd.Printf("  TCP Sync:        configured (%s:%d)\n", cfg.Data.Server.Host, cfg.Data.Sync.TCPPort)
+		cmd.Printf("  TCP Sync:        configured (%s)\n", cfg.Data.TCPAddress)
 		cmd.Printf("  UDP Notify:      configured (%s:%d)\n", cfg.Data.Server.Host, cfg.Data.Notify.UDPPort)
 		cmd.Printf("  gRPC Service:    configured (%s)\n", cfg.Data.GRPCAddress)
 		cmd.Printf("  WebSocket Chat:  configured (%s:%d)\n", cfg.Data.Server.Host, cfg.Data.Chat.WSPort)

@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ngocan-dev/mangahub_/cli/config"
+	"github.com/ngocan-dev/mangahub_/cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -25,14 +25,12 @@ var initCmd = &cobra.Command{
 			return err
 		}
 
-		cfgPath := filepath.Join(cfgDir, "config.yaml")
-		if _, err := os.Stat(cfgPath); err != nil {
-			if !errors.Is(err, os.ErrNotExist) {
-				return err
-			}
-			if err := os.WriteFile(cfgPath, []byte(config.DefaultConfigYAML), 0o644); err != nil {
-				return err
-			}
+		cfgPath, err := config.DefaultPath()
+		if err != nil {
+			return err
+		}
+		if _, err := config.LoadWithOptions(config.LoadOptions{Path: cfgPath}); err != nil {
+			return err
 		}
 
 		dataPath := filepath.Join(cfgDir, "data.db")
@@ -53,6 +51,7 @@ var initCmd = &cobra.Command{
 		}
 
 		cmd.Println("MangaHub initialized at", cfgDir)
+		cmd.Println("Config file:", cfgPath)
 		return nil
 	},
 }

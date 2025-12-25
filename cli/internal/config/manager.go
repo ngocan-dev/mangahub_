@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -27,6 +29,7 @@ type Manager struct {
 	MetaPath string
 	Data     Config
 	meta     Meta
+	flags    LoadOptions
 }
 
 var (
@@ -34,6 +37,24 @@ var (
 	runtime        RuntimeOptions
 	mu             sync.RWMutex
 )
+
+// LoadOptions collects runtime overrides for configuration resolution.
+type LoadOptions struct {
+	Path         string
+	APIEndpoint  string
+	GRPCAddress  string
+	TCPAddress   string
+	EnvLookup    func(string) string
+	SkipOverride bool
+}
+
+// envOrDefault returns environment variable lookup function or os.Getenv.
+func envOrDefault(fn func(string) string) func(string) string {
+	if fn != nil {
+		return fn
+	}
+	return os.Getenv
+}
 
 // SetRuntimeOptions saves the current runtime flags for use across commands.
 func SetRuntimeOptions(verbose, quiet bool) {
@@ -97,7 +118,12 @@ func metaPathForConfig(configPath string) (string, error) {
 
 // Load loads configuration from disk, creating it with defaults if needed.
 func Load(customPath string) (*Manager, error) {
-	path, err := resolvePath(customPath)
+	return LoadWithOptions(LoadOptions{Path: customPath})
+}
+
+// LoadWithOptions loads configuration using flag/env overrides.
+func LoadWithOptions(opts LoadOptions) (*Manager, error) {
+	path, err := resolvePath(opts.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +144,7 @@ func Load(customPath string) (*Manager, error) {
 		active = "default"
 	}
 
-	if active != "default" && (customPath == "" || customPath == path) {
+	if active != "default" && (opts.Path == "" || opts.Path == path) {
 		if configPath, err = profileConfigPath(active); err != nil {
 			return nil, err
 		}
@@ -145,8 +171,9 @@ func Load(customPath string) (*Manager, error) {
 	}
 
 	applyDerived(&cfg)
+	applyOverrides(&cfg, opts)
 
-	m := &Manager{Path: configPath, MetaPath: metaPath, Data: cfg, meta: meta}
+	m := &Manager{Path: configPath, MetaPath: metaPath, Data: cfg, meta: meta, flags: opts}
 	mu.Lock()
 	currentManager = m
 	mu.Unlock()
@@ -281,4 +308,61 @@ func saveMeta(path string, meta Meta) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0o644)
+}
+
+func applyOverrides(cfg *Config, opts LoadOptions) {
+	env := envOrDefault(opts.EnvLookup)
+	if opts.SkipOverride {
+		return
+	}
+
+	cfg.BaseURL = firstNonEmpty(
+		opts.APIEndpoint,
+		env("MANGAHUB_API"),
+		cfg.BaseURL,
+		DefaultBaseURL,
+	)
+
+	cfg.GRPCAddress = firstNonEmpty(
+		opts.GRPCAddress,
+		env("MANGAHUB_GRPC"),
+		cfg.GRPCAddress,
+		DefaultGRPCAddress,
+	)
+
+	cfg.TCPAddress = firstNonEmpty(
+		opts.TCPAddress,
+		env("MANGAHUB_TCP"),
+		cfg.TCPAddress,
+		fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Sync.TCPPort),
+		DefaultTCPAddress,
+	)
+
+	if port, err := parsePortFromAddress(cfg.TCPAddress); err == nil && port > 0 {
+		cfg.Sync.TCPPort = port
+	}
+
+	cfg.BaseURL = ResolveBaseURL(*cfg)
+	cfg.GRPCAddress = ResolveGRPCAddress(*cfg)
+	cfg.TCPAddress = ResolveTCPAddress(*cfg)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func parsePortFromAddress(address string) (int, error) {
+	host, portStr, err := net.SplitHostPort(address)
+	if err != nil {
+		return 0, err
+	}
+	if strings.TrimSpace(host) == "" {
+		return 0, fmt.Errorf("empty host in address %q", address)
+	}
+	return strconv.Atoi(portStr)
 }
