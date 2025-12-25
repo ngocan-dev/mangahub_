@@ -88,6 +88,12 @@ func main() {
 	}
 	defer db.Close()
 
+	// Apply migrations to keep the schema up to date (idempotent).
+	if err := dbpkg.RunMigrations(db, cfg.DB.MigrationsDir); err != nil {
+		log.Fatalf("run migrations: %v", err)
+	}
+	log.Println("database migrations applied")
+
 	// Gin
 	r := gin.Default()
 	r.Use(middleware.CORSMiddleware(cfg.App.AllowedOrigins))
