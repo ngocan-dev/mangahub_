@@ -147,22 +147,30 @@ func (s *Service) UpdateProgress(ctx context.Context, userID, mangaID int64, req
 func (s *Service) GetFriendsActivityFeed(ctx context.Context, userID int64, page, limit int) (*ActivityFeedResponse, error) {
 	activities, total, err := s.repo.GetFriendsActivities(ctx, userID, page, limit)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return &ActivityFeedResponse{
+				Activities: []Activity{},
+				Total:      0,
+				Page:       page,
+				Limit:      limit,
+				Pages:      0,
+			}, nil
+		}
 		return nil, fmt.Errorf("%w: %v", ErrDatabaseError, err)
 	}
-	if len(activities) == 0 {
-		return nil, ErrNoData
-	}
-	pages := 0
-	if limit > 0 {
-		pages = (total + limit - 1) / limit
-	}
-	return &ActivityFeedResponse{
+	resp := &ActivityFeedResponse{
 		Activities: activities,
 		Total:      total,
 		Page:       page,
 		Limit:      limit,
-		Pages:      pages,
-	}, nil
+	}
+	if len(resp.Activities) == 0 {
+		resp.Activities = []Activity{}
+	}
+	if resp.Limit > 0 {
+		resp.Pages = (resp.Total + resp.Limit - 1) / resp.Limit
+	}
+	return resp, nil
 }
 
 // GetReadingStatistics returns cached/calculated stats
