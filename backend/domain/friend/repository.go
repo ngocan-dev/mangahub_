@@ -20,7 +20,7 @@ type Repository struct {
 
 // NewRepository builds a friend repository
 func NewRepository(db *sql.DB) *Repository {
-	return &Repository{db: db, friendIDColumn: "friend_id"}
+	return &Repository{db: db, friendIDColumn: "friend_user_id"}
 }
 
 // FindUsersByQuery searches users by username or email (case-insensitive) excluding self and existing friends.
@@ -87,22 +87,26 @@ func (r *Repository) AreFriends(ctx context.Context, userID, friendID int64) (bo
 		return false, err
 	}
 
-	statusFilter := ""
-	if r.friendHasStatus {
-		statusFilter = " AND status = 'accepted'"
-	}
-
-	var count int
 	query := fmt.Sprintf(`
-        SELECT COUNT(*) FROM friends
-        WHERE ((user_id = ? AND %s = ?) OR (%s = ? AND user_id = ?))%s
-    `, r.friendIDColumn, r.friendIDColumn, r.friendIDColumn, statusFilter)
+        SELECT 1
+        FROM friends
+        WHERE status = 'accepted'
+        AND (
+            (user_id = ? AND %s = ?)
+         OR (user_id = ? AND %s = ?)
+        )
+        LIMIT 1
+    `, r.friendIDColumn, r.friendIDColumn)
 
-	if err := r.db.QueryRowContext(ctx, query, userID, friendID, friendID, userID).Scan(&count); err != nil {
+	var flag int
+	if err := r.db.QueryRowContext(ctx, query, userID, friendID, friendID, userID).Scan(&flag); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
 		return false, err
 	}
-	// A friendship is considered active only when both directions are accepted
-	return count >= 2, nil
+
+	return true, nil
 }
 
 // HasPendingRequest checks for an active pending request between users.
@@ -400,25 +404,11 @@ func (r *Repository) ensureFriendSchema(ctx context.Context) error {
 }
 
 func (r *Repository) detectFriendIDColumn(ctx context.Context) error {
-	// Detect the friend ID column (friend_id vs friend_user_id)
-	currentQuery := fmt.Sprintf(`SELECT %s FROM friends LIMIT 0`, r.friendIDColumn)
-	if _, err := r.db.ExecContext(ctx, currentQuery); err != nil {
-		if !r.isUnknownColumnError(err, r.friendIDColumn) {
-			return err
-		}
-
-		altColumn := "friend_user_id"
-		altQuery := fmt.Sprintf(`SELECT %s FROM friends LIMIT 0`, altColumn)
-		if _, altErr := r.db.ExecContext(ctx, altQuery); altErr != nil {
-			if r.isUnknownColumnError(altErr, altColumn) {
-				return fmt.Errorf("friends table is missing expected column %q", altColumn)
-			}
-			return altErr
-		}
-
-		r.friendIDColumn = altColumn
+	query := `SELECT friend_user_id FROM friends LIMIT 0`
+	if _, err := r.db.ExecContext(ctx, query); err != nil {
+		return fmt.Errorf("friends table must have friend_user_id column")
 	}
-
+	r.friendIDColumn = "friend_user_id"
 	return nil
 }
 

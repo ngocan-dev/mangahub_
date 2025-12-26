@@ -110,6 +110,8 @@ export default function FriendsPage() {
     setRequestMessage(null);
     try {
       await friendService.sendFriendRequest(userId);
+      await loadPendingRequests();
+      await loadFriends();
       setRequestMessage("Friend request sent.");
     } catch (err) {
       setError("Could not send friend request.");
