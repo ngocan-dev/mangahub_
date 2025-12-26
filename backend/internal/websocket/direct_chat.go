@@ -98,21 +98,48 @@ func (h *DirectChatHub) removePresenceConn(userID, connID int64) {
 
 func (h *DirectChatHub) broadcastPresence() {
 	online := h.GetOnlineUserIDs()
-	msg := map[string]any{
-		"type":            "presence:update",
-		"online_user_ids": online,
+	onlineSet := make(map[int64]struct{}, len(online))
+	for _, id := range online {
+		onlineSet[id] = struct{}{}
 	}
 
+	// Snapshot current connections to avoid holding locks while hitting DB
 	h.mu.RLock()
-	defer h.mu.RUnlock()
-
-	for _, userConns := range h.presence {
+	connsByUser := make(map[int64][]*websocket.Conn, len(h.presence))
+	for uid, userConns := range h.presence {
+		list := make([]*websocket.Conn, 0, len(userConns))
 		for _, conn := range userConns {
+			list = append(list, conn)
+		}
+		connsByUser[uid] = list
+	}
+	h.mu.RUnlock()
+
+	for uid, conns := range connsByUser {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		friends, err := h.friendRepo.ListFriends(ctx, uid)
+		cancel()
+		if err != nil {
+			log.Printf("[presence] list friends failed user_id=%d err=%v", uid, err)
+			continue
+		}
+
+		visible := make([]int64, 0, len(friends))
+		for _, f := range friends {
+			if _, ok := onlineSet[f.ID]; ok {
+				visible = append(visible, f.ID)
+			}
+		}
+
+		msg := map[string]any{
+			"type":            "presence:update",
+			"online_user_ids": visible,
+		}
+		for _, conn := range conns {
 			_ = conn.WriteJSON(msg)
 		}
 	}
 
-	// Log để test bước 2/3
 	log.Printf("[presence] online=%v", online)
 }
 
