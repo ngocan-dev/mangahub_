@@ -88,18 +88,25 @@ func (r *Repository) AreFriends(ctx context.Context, userID, friendID int64) (bo
 	}
 
 	query := fmt.Sprintf(`
-        SELECT 1
-        FROM friends
-        WHERE status = 'accepted'
-        AND (
-            (user_id = ? AND %s = ?)
-         OR (user_id = ? AND %s = ?)
-        )
-        LIMIT 1
-    `, r.friendIDColumn, r.friendIDColumn)
+		SELECT 1
+		FROM friends
+		WHERE status = 'accepted'
+		  AND (
+			  (user_id = ? AND %s = ?)
+		   OR (user_id = ? AND %s = ?)
+		  )
+		LIMIT 1
+	`, r.friendIDColumn, r.friendIDColumn)
 
 	var flag int
-	if err := r.db.QueryRowContext(ctx, query, userID, friendID, friendID, userID).Scan(&flag); err != nil {
+	if err := r.db.QueryRowContext(
+		ctx,
+		query,
+		userID,
+		friendID,
+		friendID,
+		userID,
+	).Scan(&flag); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return false, nil
 		}
