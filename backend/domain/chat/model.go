@@ -27,5 +27,5 @@ type ConversationSummary struct {
 	FriendAvatar   *string      `json:"friend_avatar"`
 	RoomID         *int64       `json:"room_id"`
 	LastMessage    *ChatMessage `json:"last_message,omitempty"`
-	LastMessageAt  *time.Time   `json:"last_message_at"`
+	LastMessageAt  *time.Time   `json:"last_message_at,omitempty"`
 }

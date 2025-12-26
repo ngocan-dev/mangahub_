@@ -3,7 +3,8 @@ package chat
 import (
 	"context"
 	"database/sql"
-	"fmt"
+
+	"github.com/go-sql-driver/mysql"
 )
 
 // Repository handles chat persistence.
@@ -19,14 +20,24 @@ func NewRepository(db *sql.DB) *Repository {
 // EnsurePrivateRoom returns the existing room for a friend pair or creates it if missing.
 func (r *Repository) EnsurePrivateRoom(ctx context.Context, userA, userB, createdBy int64) (*ChatRoom, error) {
 	code := RoomCode(userA, userB)
-	name := fmt.Sprintf("Direct chat %d-%d", userA, userB)
 
+	room, err := r.GetRoomByCode(ctx, code)
+	if err != nil {
+		return nil, err
+	}
+	if room != nil {
+		return room, nil
+	}
+
+	name := "Private Chat"
 	res, err := r.db.ExecContext(ctx, `
         INSERT INTO chat_rooms (code, name, is_private, created_by)
         VALUES (?, ?, TRUE, ?)
-        ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)
     `, code, name, createdBy)
 	if err != nil {
+		if mysqlErr, ok := err.(*mysql.MySQLError); ok && mysqlErr.Number == 1062 {
+			return r.GetRoomByCode(ctx, code)
+		}
 		return nil, err
 	}
 
@@ -161,10 +172,105 @@ func (r *Repository) GetLastMessage(ctx context.Context, roomID int64) (*ChatMes
 }
 
 // ListConversations returns accepted friends with optional room + last message.
-// Note: this method is kept for legacy callers; the chat service now builds
-// conversations using driver-agnostic queries per friend to avoid SQL dialect
-// issues.
 func (r *Repository) ListConversations(ctx context.Context, userID int64) ([]ConversationSummary, error) {
-	// This fallback returns an empty list to avoid dialect-specific errors.
-	return []ConversationSummary{}, nil
+	rows, err := r.db.QueryContext(ctx, `
+        SELECT
+            u.id AS friend_id,
+            u.username AS friend_username,
+            COALESCE(u.avatar_url, '') AS friend_avatar,
+            cr.id AS room_id,
+            cm.id AS last_message_id,
+            cm.room_id AS last_message_room_id,
+            cm.user_id AS last_message_user_id,
+            cm.content AS last_message_content,
+            cm.created_at AS last_message_created_at
+        FROM (
+            SELECT friend_user_id AS friend_id
+            FROM friends
+            WHERE user_id = ? AND status = 'accepted'
+            UNION
+            SELECT user_id AS friend_id
+            FROM friends
+            WHERE friend_user_id = ? AND status = 'accepted'
+        ) rel
+        JOIN users u ON u.id = rel.friend_id
+        LEFT JOIN chat_rooms cr
+          ON cr.code = CONCAT('friend_', LEAST(?, u.id), '_', GREATEST(?, u.id))
+         AND cr.is_private = TRUE
+        LEFT JOIN chat_messages cm
+          ON cm.id = (
+            SELECT id
+            FROM chat_messages
+            WHERE room_id = cr.id
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+          )
+        ORDER BY COALESCE(cm.created_at, '1970-01-01 00:00:00') DESC, u.username ASC
+    `, userID, userID, userID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var conversations []ConversationSummary
+	for rows.Next() {
+		var (
+			friendID       int64
+			friendUsername string
+			friendAvatar   string
+			roomID         sql.NullInt64
+			lastMsgID      sql.NullInt64
+			lastMsgRoomID  sql.NullInt64
+			lastMsgUserID  sql.NullInt64
+			lastMsgContent sql.NullString
+			lastMsgCreated sql.NullTime
+		)
+
+		if err := rows.Scan(
+			&friendID,
+			&friendUsername,
+			&friendAvatar,
+			&roomID,
+			&lastMsgID,
+			&lastMsgRoomID,
+			&lastMsgUserID,
+			&lastMsgContent,
+			&lastMsgCreated,
+		); err != nil {
+			return nil, err
+		}
+
+		var avatarPtr *string
+		if friendAvatar != "" {
+			avatarPtr = &friendAvatar
+		}
+
+		var roomIDPtr *int64
+		if roomID.Valid {
+			roomIDPtr = &roomID.Int64
+		}
+
+		conv := ConversationSummary{
+			FriendID:       friendID,
+			FriendUsername: friendUsername,
+			FriendAvatar:   avatarPtr,
+			RoomID:         roomIDPtr,
+		}
+
+		if lastMsgID.Valid && lastMsgRoomID.Valid && lastMsgUserID.Valid && lastMsgCreated.Valid {
+			lastMsg := ChatMessage{
+				ID:        lastMsgID.Int64,
+				RoomID:    lastMsgRoomID.Int64,
+				UserID:    lastMsgUserID.Int64,
+				Content:   lastMsgContent.String,
+				CreatedAt: lastMsgCreated.Time,
+			}
+			conv.LastMessage = &lastMsg
+			conv.LastMessageAt = &lastMsg.CreatedAt
+		}
+
+		conversations = append(conversations, conv)
+	}
+
+	return conversations, rows.Err()
 }
