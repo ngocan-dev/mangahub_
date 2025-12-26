@@ -143,30 +143,41 @@ func (r *Repository) GetLastMessage(ctx context.Context, roomID int64) (*ChatMes
 
 // ListConversations returns accepted friends with optional room + last message.
 func (r *Repository) ListConversations(ctx context.Context, userID int64) ([]ConversationSummary, error) {
-	rows, err := r.db.QueryContext(ctx, `
+	query := `
+        WITH accepted_friends AS (
+            SELECT DISTINCT
+                CASE
+                    WHEN f.user_id = ? THEN f.friend_user_id
+                    ELSE f.user_id
+                END AS friend_id
+            FROM friends f
+            WHERE f.status = 'accepted'
+              AND (f.user_id = ? OR f.friend_user_id = ?)
+        )
         SELECT
             u.id AS friend_id,
-            u.username,
-            u.email,
-            COALESCE(u.avatar_url, '') AS avatar_url,
+            u.username AS friend_username,
+            u.avatar_url AS friend_avatar,
             cr.id AS room_id,
-            lm.id AS last_message_id,
-            lm.room_id,
-            lm.user_id,
-            lm.content,
-            lm.created_at
-        FROM friends f
-        JOIN users u ON u.id = f.friend_user_id
-        LEFT JOIN chat_rooms cr ON cr.code = CONCAT('friend_', LEAST(f.user_id, f.friend_user_id), '_', GREATEST(f.user_id, f.friend_user_id))
+            lm.content AS last_message,
+            lm.created_at AS last_message_at
+        FROM accepted_friends af
+        JOIN users u ON u.id = af.friend_id
+        LEFT JOIN chat_rooms cr
+            ON cr.is_private = TRUE
+           AND cr.code = CONCAT('friend_', LEAST(?, u.id), '_', GREATEST(?, u.id))
+           AND cr.created_by IN (?, u.id)
         LEFT JOIN chat_messages lm ON lm.id = (
-            SELECT cm.id FROM chat_messages cm
+            SELECT cm.id
+            FROM chat_messages cm
             WHERE cm.room_id = cr.id
             ORDER BY cm.created_at DESC, cm.id DESC
             LIMIT 1
         )
-        WHERE f.user_id = ? AND f.status = 'accepted'
         ORDER BY lm.created_at DESC IS NULL, lm.created_at DESC, u.username
-    `, userID)
+    `
+
+	rows, err := r.db.QueryContext(ctx, query, userID, userID, userID, userID, userID, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -176,23 +187,17 @@ func (r *Repository) ListConversations(ctx context.Context, userID int64) ([]Con
 	for rows.Next() {
 		var conv ConversationSummary
 		var roomID sql.NullInt64
-		var lastMsgID sql.NullInt64
-		var lastRoomID sql.NullInt64
-		var lastUserID sql.NullInt64
-		var lastContent sql.NullString
-		var lastCreatedAt sql.NullTime
+		var friendAvatar sql.NullString
+		var lastMessage sql.NullString
+		var lastMessageAt sql.NullTime
 
 		if err := rows.Scan(
-			&conv.Friend.ID,
-			&conv.Friend.Username,
-			&conv.Friend.Email,
-			&conv.Friend.AvatarURL,
+			&conv.FriendID,
+			&conv.FriendUsername,
+			&friendAvatar,
 			&roomID,
-			&lastMsgID,
-			&lastRoomID,
-			&lastUserID,
-			&lastContent,
-			&lastCreatedAt,
+			&lastMessage,
+			&lastMessageAt,
 		); err != nil {
 			return nil, err
 		}
@@ -201,14 +206,15 @@ func (r *Repository) ListConversations(ctx context.Context, userID int64) ([]Con
 			conv.RoomID = &roomID.Int64
 		}
 
-		if lastMsgID.Valid && lastRoomID.Valid && lastUserID.Valid && lastContent.Valid && lastCreatedAt.Valid {
-			conv.LastMessage = &ChatMessage{
-				ID:        lastMsgID.Int64,
-				RoomID:    lastRoomID.Int64,
-				UserID:    lastUserID.Int64,
-				Content:   lastContent.String,
-				CreatedAt: lastCreatedAt.Time,
-			}
+		if friendAvatar.Valid {
+			conv.FriendAvatar = &friendAvatar.String
+		}
+
+		if lastMessage.Valid {
+			conv.LastMessage = &lastMessage.String
+		}
+		if lastMessageAt.Valid {
+			conv.LastMessageAt = &lastMessageAt.Time
 		}
 
 		conversations = append(conversations, conv)

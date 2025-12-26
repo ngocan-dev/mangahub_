@@ -1,10 +1,6 @@
 package chat
 
-import (
-	"time"
-
-	"github.com/ngocan-dev/mangahub/backend/domain/friend"
-)
+import "time"
 
 // ChatRoom represents a private room between two friends.
 type ChatRoom struct {
@@ -26,7 +22,10 @@ type ChatMessage struct {
 
 // ConversationSummary is used for left-panel listings.
 type ConversationSummary struct {
-	RoomID      *int64             `json:"room_id,omitempty"`
-	Friend      friend.UserSummary `json:"friend"`
-	LastMessage *ChatMessage       `json:"last_message,omitempty"`
+	FriendID       int64      `json:"friend_id"`
+	FriendUsername string     `json:"friend_username"`
+	FriendAvatar   *string    `json:"friend_avatar"`
+	RoomID         *int64     `json:"room_id"`
+	LastMessage    *string    `json:"last_message"`
+	LastMessageAt  *time.Time `json:"last_message_at"`
 }
