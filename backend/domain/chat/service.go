@@ -127,8 +127,8 @@ func ParseRoomParticipants(code string) (int64, int64, error) {
 
 // WithLastMessageAt is a helper to get the most recent timestamp for sorting on the frontend.
 func WithLastMessageAt(conv ConversationSummary) time.Time {
-	if conv.LastMessage != nil {
-		return conv.LastMessage.CreatedAt
+	if conv.LastMessageAt != nil {
+		return *conv.LastMessageAt
 	}
 	return time.Time{}
 }
