@@ -27,10 +27,53 @@ export interface Conversation {
 
 async function getConversations(): Promise<Conversation[]> {
   try {
-    const { data } = await http.get<{ conversations: Conversation[] }>(
-      "/chat/conversations",
-    );
-    return data?.conversations ?? [];
+    const { data } = await http.get<
+      { conversations?: unknown } | Conversation[]
+    >("/chat/conversations");
+
+    const convs = Array.isArray(data)
+      ? data
+      : (data?.conversations as unknown);
+
+    if (!Array.isArray(convs)) {
+      return [];
+    }
+
+    return convs
+      .map((item) => {
+        const raw = item as Record<string, unknown>;
+        const friendId = Number(raw.friend_id ?? (raw.friend as any)?.id);
+        const friendUsername =
+          typeof raw.friend_username === "string"
+            ? raw.friend_username
+            : (raw.friend as any)?.username;
+        if (!Number.isFinite(friendId) || !friendUsername) return null;
+
+        const friend: UserSummary = {
+          id: friendId,
+          username: friendUsername,
+          avatar_url:
+            typeof raw.friend_avatar === "string"
+              ? raw.friend_avatar
+              : (raw.friend as any)?.avatar_url,
+        };
+
+        const roomId = raw.room_id;
+        const lastMessage = raw.last_message as ChatMessage | undefined;
+
+        return {
+          room_id: typeof roomId === "number" ? roomId : undefined,
+          friend,
+          last_message:
+            lastMessage && typeof lastMessage === "object"
+              ? {
+                  ...lastMessage,
+                  created_at: (lastMessage as any).created_at,
+                }
+              : undefined,
+        } satisfies Conversation;
+      })
+      .filter(Boolean) as Conversation[];
   } catch (error) {
     if (axios.isAxiosError(error)) {
       console.error(

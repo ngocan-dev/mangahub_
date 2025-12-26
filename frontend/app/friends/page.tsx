@@ -25,6 +25,7 @@ export default function FriendsPage() {
   const [chatInput, setChatInput] = useState("");
   const [chatError, setChatError] = useState<string | null>(null);
   const [onlineUserIds, setOnlineUserIds] = useState<Set<number>>(new Set());
+  const [rawOnlineUserIds, setRawOnlineUserIds] = useState<Set<number>>(new Set());
 
   /* ------------------------ */
   /* Loaders */
@@ -263,7 +264,7 @@ export default function FriendsPage() {
           const normalizedIds = payload.online_user_ids
             .map((id) => Number(id))
             .filter((id) => Number.isFinite(id));
-          setOnlineUserIds(new Set(normalizedIds));
+          setRawOnlineUserIds(new Set(normalizedIds));
         }
       } catch (err) {
         console.error("Failed to parse presence payload", err);
@@ -310,6 +311,15 @@ export default function FriendsPage() {
     };
   }, [token]);
 
+  // Filter online ids to friends only to avoid leaking presence
+  useEffect(() => {
+    const friendIds = new Set(acceptedFriends.map((f) => f.id));
+    const filtered = new Set(
+      Array.from(rawOnlineUserIds).filter((id) => friendIds.has(id)),
+    );
+    setOnlineUserIds(filtered);
+  }, [acceptedFriends, rawOnlineUserIds]);
+
   /* ------------------------ */
   /* Render helpers */
   /* ------------------------ */
@@ -330,7 +340,7 @@ export default function FriendsPage() {
       <section className="space-y-4">
         <h1 className="text-2xl font-semibold text-white">Friends</h1>
 
-        <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
+        <div className="grid items-start gap-4 lg:grid-cols-[340px_1fr]">
           {/* Left column */}
           <div className="space-y-4">
             {/* Search */}
@@ -435,7 +445,7 @@ export default function FriendsPage() {
 
           {/* Right column */}
           <div className="space-y-4">
-            <div className="card h-full space-y-3">
+            <div className="card flex h-full min-h-[520px] flex-col space-y-3">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold">
                   {selectedFriend ? `Chat with ${selectedFriend.username}` : "Chat"}
@@ -452,7 +462,7 @@ export default function FriendsPage() {
                     </p>
                   )}
 
-                  <div className="max-h-[420px] space-y-2 overflow-y-auto rounded bg-gray-900/40 p-3">
+                  <div className="flex-1 space-y-2 overflow-y-auto rounded bg-gray-900/40 p-3">
                     {chatMessages.map((m) => (
                       <div
                         key={m.id}

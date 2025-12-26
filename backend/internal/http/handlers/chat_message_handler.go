@@ -118,5 +118,5 @@ func (h *ChatMessageHandler) ListConversations(c *gin.Context) {
 		convs = []chat.ConversationSummary{}
 	}
 
-	c.JSON(http.StatusOK, convs)
+	c.JSON(http.StatusOK, gin.H{"conversations": convs})
 }

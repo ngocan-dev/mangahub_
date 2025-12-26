@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -103,7 +104,73 @@ func (s *Service) ListMessages(ctx context.Context, requesterID, roomID int64, l
 
 // ListConversations returns accepted friends with their latest message/room.
 func (s *Service) ListConversations(ctx context.Context, userID int64) ([]ConversationSummary, error) {
-	return s.repo.ListConversations(ctx, userID)
+	friends, err := s.friendRepo.ListFriends(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if friends == nil {
+		return []ConversationSummary{}, nil
+	}
+
+	conversations := make([]ConversationSummary, 0, len(friends))
+
+	for _, f := range friends {
+		roomCode := RoomCode(userID, f.ID)
+		room, err := s.repo.GetRoomByCode(ctx, roomCode)
+		if err != nil {
+			return nil, err
+		}
+
+		var roomIDPtr *int64
+		var lastMsg *ChatMessage
+
+		if room != nil {
+			roomIDPtr = &room.ID
+			if msg, msgErr := s.repo.GetLastMessage(ctx, room.ID); msgErr != nil {
+				return nil, msgErr
+			} else {
+				lastMsg = msg
+			}
+		} else {
+			createdRoom, ensureErr := s.repo.EnsurePrivateRoom(ctx, userID, f.ID, userID)
+			if ensureErr != nil {
+				return nil, ensureErr
+			}
+			if createdRoom != nil {
+				roomIDPtr = &createdRoom.ID
+			}
+		}
+
+		var avatarPtr *string
+		if f.AvatarURL != "" {
+			avatarPtr = &f.AvatarURL
+		}
+
+		conv := ConversationSummary{
+			FriendID:       f.ID,
+			FriendUsername: f.Username,
+			FriendAvatar:   avatarPtr,
+			RoomID:         roomIDPtr,
+		}
+		if lastMsg != nil {
+			conv.LastMessage = lastMsg
+			conv.LastMessageAt = &lastMsg.CreatedAt
+		}
+
+		conversations = append(conversations, conv)
+	}
+
+	// Most recent conversations first
+	sort.SliceStable(conversations, func(i, j int) bool {
+		li := WithLastMessageAt(conversations[i])
+		lj := WithLastMessageAt(conversations[j])
+		if li.Equal(lj) {
+			return conversations[i].FriendUsername < conversations[j].FriendUsername
+		}
+		return li.After(lj)
+	})
+
+	return conversations, nil
 }
 
 // ParseRoomParticipants returns user ids encoded in the room code.
