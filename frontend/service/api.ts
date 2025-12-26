@@ -128,7 +128,7 @@ export interface UpdateProgressResponse {
   broadcasted: boolean;
 }
 
-export async function getPopularManga(limit = 10): Promise<Manga[]> {
+export async function getPopularManga(limit = 40): Promise<Manga[]> {
   const { data } = await http.get<Manga[]>("/mangas/popular", { params: { limit } });
   return data;
 }

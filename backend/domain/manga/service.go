@@ -171,7 +171,7 @@ func GenerateSearchCacheKey(req SearchRequest) string {
 // Step 4: Subsequent requests serve data from cache
 func (s *Service) GetPopularManga(ctx context.Context, limit int) ([]Manga, error) {
 	if limit <= 0 {
-		limit = 10
+		limit = 40
 	}
 	if limit > 50 {
 		limit = 50

@@ -99,11 +99,21 @@ func (h *MangaHandler) SetWriteQueue(q *queue.WriteQueue) {
 
 // GetPopularManga returns the popular manga list, leveraging cache when available.
 func (h *MangaHandler) GetPopularManga(c *gin.Context) {
-	limitParam := c.DefaultQuery("limit", "10")
-	limit, err := strconv.Atoi(limitParam)
-	if err != nil {
-		log.Printf("handler: invalid limit value %q, defaulting to 10", limitParam)
-		limit = 10
+	const (
+		defaultLimit = 20
+		maxLimit     = 40
+	)
+
+	limit := defaultLimit
+	if s, ok := c.GetQuery("limit"); ok {
+		n, err := strconv.Atoi(s)
+		if err != nil || n <= 0 {
+			limit = defaultLimit
+		} else if n > maxLimit {
+			limit = maxLimit
+		} else {
+			limit = n
+		}
 	}
 
 	popular, err := h.mangaService.GetPopularManga(c.Request.Context(), limit)

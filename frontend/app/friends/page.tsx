@@ -381,12 +381,14 @@ export default function FriendsPage() {
                   value={requestId}
                   onChange={(e) => setRequestId(e.target.value)}
                 />
-                <button className="btn-primary w-24" onClick={handleAcceptByInput}>
-                  Accept
-                </button>
-                <button className="btn-secondary w-24" onClick={handleRejectByInput}>
-                  Reject
-                </button>
+                <div>
+                  <button className="btn-primary w-24 top-1" onClick={handleAcceptByInput}>
+                    Accept
+                  </button>
+                  <button className="btn-secondary w-24 top-1" onClick={handleRejectByInput}>
+                    Reject
+                  </button>
+                </div>
               </div>
 
               {pendingRequests.length === 0 ? (
